@@ -65,11 +65,11 @@ export default function HomePage() {
   const [savedKits, setSavedKits] = useState([]);
   const [authLoading, setAuthLoading] = useState(false);
   const [savedId, setSavedId] = useState(null);
-  const [baselineQuestions, setBaselineQuestions] = useState([]);
   const [pinnedQuestionIds, setPinnedQuestionIds] = useState([]);
   const [editedQuestionIds, setEditedQuestionIds] = useState([]);
   const [regeneratingQuestions, setRegeneratingQuestions] = useState(false);
   const [questionRevision, setQuestionRevision] = useState(0);
+  const [selectedQuestionCategory, setSelectedQuestionCategory] = useState('technical');
 
   const weakestFirst = useMemo(() => {
     if (!kit) return [];
@@ -126,7 +126,6 @@ export default function HomePage() {
       if (!response.ok) throw new Error(data.error || 'Could not build preparation kit');
       setKit(data.kit);
       setSavedId(data.savedId);
-      setBaselineQuestions(data.kit.questions);
       setPinnedQuestionIds([]);
       setEditedQuestionIds([]);
       setScores({});
@@ -163,7 +162,7 @@ export default function HomePage() {
     setStatus('Custom question added at the bottom. Edit it, then pin it or save your changes.');
   }
 
-  async function rebuildUnpinnedQuestions() {
+  async function regenerateQuestionCategory() {
     if (!kit) return;
     setRegeneratingQuestions(true);
     setError('');
@@ -172,7 +171,7 @@ export default function HomePage() {
       const response = await fetch('/api/questions/regenerate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ requirements: kit.role.requirements, companyBrief: kit.company_brief, revision })
+        body: JSON.stringify({ requirements: kit.role.requirements, companyBrief: kit.company_brief, category: selectedQuestionCategory, revision })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not regenerate questions');
@@ -180,15 +179,13 @@ export default function HomePage() {
       setKit((current) => ({
         ...current,
         questions: current.questions.map((question) => (
-          question.id.startsWith('custom-') || pinnedQuestionIds.includes(question.id) || editedQuestionIds.includes(question.id)
+          question.category !== selectedQuestionCategory || question.id.startsWith('custom-') || pinnedQuestionIds.includes(question.id) || editedQuestionIds.includes(question.id)
             ? question
             : generatedById.get(question.id) || question
-        )),
-        coverage: { ...current.coverage, ...data.coverage }
+        ))
       }));
-      setBaselineQuestions(data.questions);
       setQuestionRevision(revision);
-      setStatus('Fresh question variants generated. Pinned, edited, and custom questions were preserved.');
+      setStatus(`Fresh ${selectedQuestionCategory} questions generated. Pinned, edited, custom, and other-category questions were preserved.`);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -214,23 +211,11 @@ export default function HomePage() {
     setResearching(true);
     setError('');
     try {
-      const response = await fetch('/api/research', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ companyUrl: form.companyUrl, requirements: kit.role.requirements }) });
+      const response = await fetch('/api/research', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ companyUrl: form.companyUrl, requirements: kit.role.requirements, includeQuestions: false }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Company research could not be completed');
-      const generatedById = new Map(data.questions.map((question) => [question.id, question]));
-      setKit((current) => ({
-        ...current,
-        company_brief: data.companyBrief,
-        source: { ...current.source, pages_used: data.companyBrief.sources },
-        questions: current.questions.map((question) => (
-          question.id.startsWith('custom-') || pinnedQuestionIds.includes(question.id) || editedQuestionIds.includes(question.id)
-            ? question
-            : generatedById.get(question.id) || question
-        )),
-        coverage: { ...current.coverage, ...data.coverage }
-      }));
-      setBaselineQuestions(data.questions);
-      setStatus(`Company context added from ${data.audit.pages_retrieved} page${data.audit.pages_retrieved === 1 ? '' : 's'}; untouched questions were refreshed with source context.`);
+      setKit((current) => ({ ...current, company_brief: data.companyBrief, source: { ...current.source, pages_used: data.companyBrief.sources } }));
+      setStatus(`Company brief refreshed from ${data.audit.pages_retrieved} page${data.audit.pages_retrieved === 1 ? '' : 's'}. Your questions and schedule were left unchanged.`);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -289,7 +274,7 @@ export default function HomePage() {
           </form>
           {status && <p className="status mb-0 mt-4 text-sm font-semibold text-mint" role="status">{status}</p>}
           {error && <p className="error mb-0 mt-4 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
-          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setBaselineQuestions(saved.kit.questions); setPinnedQuestionIds([]); setEditedQuestionIds([]); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
+          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds([]); setEditedQuestionIds([]); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
         </section>
 
         <section aria-live="polite">
@@ -338,7 +323,7 @@ export default function HomePage() {
               <section>
                 <div className="section-header mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div><h2 className="m-0 text-lg font-bold text-ink">Questions</h2><p className="mb-0 mt-1 text-sm text-slate-600">Edit, move, pin, or remove prompts before your next practice round.</p></div>
-                  <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><button type="button" onClick={rebuildUnpinnedQuestions} disabled={regeneratingQuestions} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingQuestions ? 'Regenerating...' : 'Regenerate unpinned'}</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
+                  <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><label className="text-sm font-semibold text-slate-700">Category<select value={selectedQuestionCategory} onChange={(event) => setSelectedQuestionCategory(event.target.value)} className="ml-2 border border-slate-300 bg-white px-2 py-1 text-sm"><option value="technical">Technical</option><option value="behavioural">Behavioural</option></select></label><button type="button" onClick={regenerateQuestionCategory} disabled={regeneratingQuestions} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingQuestions ? 'Regenerating...' : 'Regenerate category'}</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
                 </div>
                 <div className="question-list grid gap-3">{kit.questions.map((question, index) => <QuestionEditor key={question.id} question={question} index={index} total={kit.questions.length} pinned={pinnedQuestionIds.includes(question.id)} onChange={(prompt) => updateQuestion(question.id, prompt)} onMove={(direction) => moveQuestion(question.id, direction)} onPin={() => setPinnedQuestionIds((current) => current.includes(question.id) ? current.filter((id) => id !== question.id) : [...current, question.id])} onDelete={() => setKit((current) => ({ ...current, questions: current.questions.filter((item) => item.id !== question.id) }))} />)}</div>
               </section>

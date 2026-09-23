@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateQuestions, repairCoverage } from '../src/generation.mjs';
+import { generateQuestions, generateQuestionsForCategory, repairCoverage } from '../src/generation.mjs';
 import { selectRelevantLinks } from '../src/research.mjs';
 
 test('uses research context while generating a technical question', () => {
@@ -18,6 +18,17 @@ test('uses a distinct prompt template for a later regeneration revision', () => 
   const regenerated = generateQuestions(requirements, null, { variation: 1 })[0];
   assert.notEqual(regenerated.prompt, initial.prompt);
   assert.equal(regenerated.id, initial.id);
+});
+
+test('generates only the requested question category', () => {
+  const requirements = [
+    { id: 'r1', text: 'Build REST APIs', kind: 'technical', priority: 'must' },
+    { id: 'r2', text: 'Collaborate with stakeholders', kind: 'behavioural', priority: 'must' }
+  ];
+  const questions = generateQuestionsForCategory(requirements, null, { category: 'behavioural', variation: 1 });
+  assert.equal(questions.length, 1);
+  assert.equal(questions[0].category, 'behavioural');
+  assert.deepEqual(questions[0].requirement_ids, ['r2']);
 });
 
 test('adds a second-pass question for a missing must-have requirement', () => {

@@ -38,6 +38,13 @@ export function generateQuestions(requirements, companyBrief, { variation = 0 } 
   }));
 }
 
+export function generateQuestionsForCategory(requirements, companyBrief, { category, variation = 0 } = {}) {
+  if (!['technical', 'behavioural'].includes(category)) {
+    throw new Error('category must be technical or behavioural');
+  }
+  return generateQuestions(requirements, companyBrief, { variation }).filter((question) => question.category === category);
+}
+
 export function repairCoverage(requirements, questions) {
   const covered = new Set(questions.flatMap((question) => question.requirement_ids));
   const gaps = requirements.filter((requirement) => requirement.priority === 'must' && !covered.has(requirement.id));

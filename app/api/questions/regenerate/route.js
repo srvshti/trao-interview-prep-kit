@@ -1,21 +1,18 @@
-import { generateQuestions, repairCoverage } from '../../../../src/generation.mjs';
+import { generateQuestionsForCategory } from '../../../../src/generation.mjs';
 
 export async function POST(request) {
   try {
-    const { requirements = [], companyBrief = null, revision = 1 } = await request.json();
-    if (!Array.isArray(requirements) || !Number.isInteger(revision) || revision < 1) {
-      throw new Error('requirements and a positive integer revision are required');
+    const { requirements = [], companyBrief = null, category, revision = 1 } = await request.json();
+    if (!Array.isArray(requirements) || !Number.isInteger(revision) || revision < 1 || !category) {
+      throw new Error('requirements, category, and a positive integer revision are required');
     }
 
-    const generated = repairCoverage(
-      requirements,
-      generateQuestions(requirements, companyBrief, { variation: revision })
-    );
+    const questions = generateQuestionsForCategory(requirements, companyBrief, { category, variation: revision });
 
     return Response.json({
       status: 'ok',
-      questions: generated.questions,
-      coverage: { repaired_requirement_ids: generated.repaired_requirement_ids, passes: 2 },
+      questions,
+      category,
       revision
     });
   } catch (error) {
