@@ -15,22 +15,24 @@ function Requirement({ requirement }) {
   );
 }
 
-function Flashcard({ card, score, onScore }) {
+function Flashcard({ card, score, revealed, onReveal, onScore, onNext }) {
   return (
     <article className="flashcard border border-slate-200 bg-white p-5 shadow-sm">
       <p className="m-0 text-xs font-bold uppercase text-slate-500">Flashcard</p>
       <h3 className="mb-3 mt-2 text-base leading-6 text-ink">{card.front}</h3>
-      <p className="m-0 text-sm leading-6 text-slate-600">{card.back}</p>
-      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-        <span className="text-xs font-semibold text-slate-500">Confidence: {score ?? 'not rated'}</span>
-        <div className="flex gap-2" aria-label={`Set confidence for ${card.front}`}>
-          {[1, 2, 3].map((value) => (
-            <button key={value} type="button" onClick={() => onScore(card.id, value)} className={`h-8 w-8 rounded border text-sm font-bold ${score === value ? 'border-mint bg-mint text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-mint'}`} aria-label={`Confidence ${value} out of 3`}>
-              {value}
-            </button>
-          ))}
+      {!revealed ? <button type="button" onClick={() => onReveal(card.id)} className="secondary-button border border-mint px-3 py-2 text-sm font-bold text-mint hover:bg-emerald-50">Reveal answer</button> : <>
+        <p className="m-0 text-sm leading-6 text-slate-600">{card.back}</p>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <div className="flex gap-2" aria-label={`Set confidence for ${card.front}`}>
+            {[1, 2, 3].map((value) => (
+              <button key={value} type="button" onClick={() => onScore(card.id, value)} className={`h-8 w-8 rounded border text-sm font-bold ${score === value ? 'border-mint bg-mint text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-mint'}`} aria-label={`Confidence ${value} out of 3`}>
+                {value}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={onNext} className="link-button text-sm font-bold text-mint underline">Skip for now</button>
         </div>
-      </div>
+      </>}
     </article>
   );
 }
@@ -57,6 +59,9 @@ export default function HomePage() {
   const [form, setForm] = useState({ companyUrl: 'https://example.com', days: '3', jd: SAMPLE_JD });
   const [kit, setKit] = useState(null);
   const [scores, setScores] = useState({});
+  const [revealedCardIds, setRevealedCardIds] = useState([]);
+  const [coveredCardIds, setCoveredCardIds] = useState([]);
+  const [practiceIndex, setPracticeIndex] = useState(0);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [researching, setResearching] = useState(false);
@@ -71,10 +76,15 @@ export default function HomePage() {
   const [questionRevision, setQuestionRevision] = useState(0);
   const [selectedQuestionCategory, setSelectedQuestionCategory] = useState('technical');
 
-  const weakestFirst = useMemo(() => {
+  const practiceQueue = useMemo(() => {
     if (!kit) return [];
-    return [...kit.flashcards].sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0));
-  }, [kit, scores]);
+    return [...kit.flashcards].sort((a, b) => {
+      const aCovered = coveredCardIds.includes(a.id) ? 1 : 0;
+      const bCovered = coveredCardIds.includes(b.id) ? 1 : 0;
+      return aCovered - bCovered || (scores[a.id] ?? 0) - (scores[b.id] ?? 0);
+    });
+  }, [kit, scores, coveredCardIds]);
+  const activePracticeCard = practiceQueue[practiceIndex % Math.max(practiceQueue.length, 1)] || null;
 
   const regenerableCategories = useMemo(() => {
     if (!kit) return [];
@@ -142,6 +152,9 @@ export default function HomePage() {
       setPinnedQuestionIds([]);
       setEditedQuestionIds([]);
       setScores({});
+      setRevealedCardIds([]);
+      setCoveredCardIds([]);
+      setPracticeIndex(0);
       setStatus(data.saved ? 'Kit ready and saved privately. Start with the must-have requirements.' : 'Kit ready. Sign in to save it privately.');
       if (data.saved) await refreshAccount();
     } catch (requestError) {
@@ -173,6 +186,21 @@ export default function HomePage() {
       return { ...current, questions: [...current.questions, question] };
     });
     setStatus('Custom question added at the bottom. Edit it, then pin it or save your changes.');
+  }
+
+  function revealCard(id) {
+    setRevealedCardIds((current) => current.includes(id) ? current : [...current, id]);
+  }
+
+  function advancePractice() {
+    setPracticeIndex((current) => practiceQueue.length > 1 ? (current + 1) % practiceQueue.length : 0);
+  }
+
+  function scoreCard(id, value) {
+    setScores((current) => ({ ...current, [id]: value }));
+    setCoveredCardIds((current) => current.includes(id) ? current : [...current, id]);
+    setRevealedCardIds((current) => current.filter((cardId) => cardId !== id));
+    setPracticeIndex(0);
   }
 
   async function regenerateQuestionCategory() {
@@ -347,10 +375,10 @@ export default function HomePage() {
 
               <section>
                 <div className="mb-3 flex items-end justify-between gap-4">
-                  <div><h2 className="m-0 text-lg font-bold text-ink">Practice cards</h2><p className="mb-0 mt-1 text-sm text-slate-600">Low-confidence cards float to the front.</p></div>
-                  <span className="text-sm font-semibold text-slate-500">{kit.flashcards.length} cards</span>
+                  <div><h2 className="m-0 text-lg font-bold text-ink">Practice cards</h2><p className="mb-0 mt-1 text-sm text-slate-600">Reveal the answer, rate your confidence, then the next weak or uncovered card comes forward.</p></div>
+                  <span className="text-sm font-semibold text-slate-500">{coveredCardIds.length}/{kit.flashcards.length} covered</span>
                 </div>
-                <div className="practice-grid grid gap-4 md:grid-cols-2">{weakestFirst.map((card) => <Flashcard key={card.id} card={card} score={scores[card.id]} onScore={(id, value) => setScores({ ...scores, [id]: value })} />)}</div>
+                {activePracticeCard && <Flashcard card={activePracticeCard} score={scores[activePracticeCard.id]} revealed={revealedCardIds.includes(activePracticeCard.id)} onReveal={revealCard} onScore={scoreCard} onNext={advancePractice} />}
               </section>
             </div>
           )}
