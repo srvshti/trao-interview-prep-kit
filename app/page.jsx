@@ -76,7 +76,20 @@ export default function HomePage() {
     return [...kit.flashcards].sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0));
   }, [kit, scores]);
 
+  const regenerableCategories = useMemo(() => {
+    if (!kit) return [];
+    return [...new Set(kit.questions
+      .filter((question) => !question.id.startsWith('custom-'))
+      .map((question) => question.category)
+      .filter((category) => ['technical', 'behavioural'].includes(category)))];
+  }, [kit]);
+
   useEffect(() => { refreshAccount(); }, []);
+  useEffect(() => {
+    if (regenerableCategories.length && !regenerableCategories.includes(selectedQuestionCategory)) {
+      setSelectedQuestionCategory(regenerableCategories[0]);
+    }
+  }, [regenerableCategories, selectedQuestionCategory]);
 
   async function refreshAccount() {
     const response = await fetch('/api/auth/me');
@@ -164,6 +177,10 @@ export default function HomePage() {
 
   async function regenerateQuestionCategory() {
     if (!kit) return;
+    if (!regenerableCategories.includes(selectedQuestionCategory)) {
+      setStatus(`There are no generated ${selectedQuestionCategory} questions in this kit. Add a matching requirement to the job description, then build a new kit.`);
+      return;
+    }
     setRegeneratingQuestions(true);
     setError('');
     try {
@@ -323,7 +340,7 @@ export default function HomePage() {
               <section>
                 <div className="section-header mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div><h2 className="m-0 text-lg font-bold text-ink">Questions</h2><p className="mb-0 mt-1 text-sm text-slate-600">Edit, move, pin, or remove prompts before your next practice round.</p></div>
-                  <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><label className="text-sm font-semibold text-slate-700">Category<select value={selectedQuestionCategory} onChange={(event) => setSelectedQuestionCategory(event.target.value)} className="ml-2 border border-slate-300 bg-white px-2 py-1 text-sm"><option value="technical">Technical</option><option value="behavioural">Behavioural</option></select></label><button type="button" onClick={regenerateQuestionCategory} disabled={regeneratingQuestions} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingQuestions ? 'Regenerating...' : 'Regenerate category'}</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
+                  <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><label className="text-sm font-semibold text-slate-700">Category<select value={selectedQuestionCategory} onChange={(event) => setSelectedQuestionCategory(event.target.value)} className="ml-2 border border-slate-300 bg-white px-2 py-1 text-sm">{regenerableCategories.map((category) => <option key={category} value={category}>{category === 'technical' ? 'Technical' : 'Behavioural'}</option>)}</select></label><button type="button" onClick={regenerateQuestionCategory} disabled={regeneratingQuestions || regenerableCategories.length === 0} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingQuestions ? 'Regenerating...' : 'Regenerate category'}</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
                 </div>
                 <div className="question-list grid gap-3">{kit.questions.map((question, index) => <QuestionEditor key={question.id} question={question} index={index} total={kit.questions.length} pinned={pinnedQuestionIds.includes(question.id)} onChange={(prompt) => updateQuestion(question.id, prompt)} onMove={(direction) => moveQuestion(question.id, direction)} onPin={() => setPinnedQuestionIds((current) => current.includes(question.id) ? current.filter((id) => id !== question.id) : [...current, question.id])} onDelete={() => setKit((current) => ({ ...current, questions: current.questions.filter((item) => item.id !== question.id) }))} />)}</div>
               </section>
