@@ -4,3 +4,4 @@ data/store.json
 kits.json
 .env
 .env.local
+.DS_Store
