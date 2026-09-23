@@ -1,5 +1,6 @@
 import { allocateSchedule, createKit, findCoverageGaps, validateKit } from './core.mjs';
-import { generateQuestions, repairCoverage } from './generation.mjs';
+import { generateQuestionDrafts } from './ai-generation.mjs';
+import { repairCoverage } from './generation.mjs';
 import { researchCompany } from './research.mjs';
 
 function partialResearchBrief(error) {
@@ -25,8 +26,8 @@ export async function buildKit(input, { researcher = researchCompany, allowPriva
     audit = { pages_requested: 0, pages_retrieved: 0, fetch_errors: [{ url: input.company_url, error: companyBrief.retrieval_error }], provider: 'public-web-retrieval' };
   }
 
-  const firstPassQuestions = generateQuestions(draft.role.requirements, companyBrief);
-  const repaired = repairCoverage(draft.role.requirements, firstPassQuestions);
+  const generation = await generateQuestionDrafts(draft.role.requirements, companyBrief);
+  const repaired = repairCoverage(draft.role.requirements, generation.questions);
   const uncovered = findCoverageGaps(draft.role.requirements, repaired.questions);
   const kit = {
     ...draft,
@@ -39,7 +40,8 @@ export async function buildKit(input, { researcher = researchCompany, allowPriva
     questions: repaired.questions,
     schedule: allocateSchedule(repaired.questions, draft.role.requirements, Number(input.days)),
     coverage: { uncovered_requirement_ids: uncovered, repaired_requirement_ids: repaired.repaired_requirement_ids, passes: 2 },
-    research_audit: audit
+    research_audit: audit,
+    generation_audit: { provider: generation.provider, errors: generation.errors }
   };
   const errors = validateKit(kit);
   if (errors.length) throw new Error(`invalid kit: ${errors.join('; ')}`);
