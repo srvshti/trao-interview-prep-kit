@@ -12,6 +12,14 @@ test('uses research context while generating a technical question', () => {
   assert.deepEqual(question.evidence, ['https://example.com/about']);
 });
 
+test('uses a distinct prompt template for a later regeneration revision', () => {
+  const requirements = [{ id: 'r1', text: 'TypeScript and REST APIs', kind: 'technical', priority: 'must' }];
+  const initial = generateQuestions(requirements, null)[0];
+  const regenerated = generateQuestions(requirements, null, { variation: 1 })[0];
+  assert.notEqual(regenerated.prompt, initial.prompt);
+  assert.equal(regenerated.id, initial.id);
+});
+
 test('adds a second-pass question for a missing must-have requirement', () => {
   const result = repairCoverage([{ id: 'r1', text: 'SQL', kind: 'technical', priority: 'must' }], []);
   assert.equal(result.questions.length, 1);

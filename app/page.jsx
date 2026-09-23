@@ -68,6 +68,8 @@ export default function HomePage() {
   const [baselineQuestions, setBaselineQuestions] = useState([]);
   const [pinnedQuestionIds, setPinnedQuestionIds] = useState([]);
   const [editedQuestionIds, setEditedQuestionIds] = useState([]);
+  const [regeneratingQuestions, setRegeneratingQuestions] = useState(false);
+  const [questionRevision, setQuestionRevision] = useState(0);
 
   const weakestFirst = useMemo(() => {
     if (!kit) return [];
@@ -158,17 +160,40 @@ export default function HomePage() {
       const question = { id: `custom-${Date.now()}`, requirement_ids: requirement ? [requirement.id] : [], category: 'technical', prompt: 'Add your custom interview question', answer_outline: 'Add the answer structure and evidence you want to practice.', difficulty: 2 };
       return { ...current, questions: [...current.questions, question] };
     });
+    setStatus('Custom question added at the bottom. Edit it, then pin it or save your changes.');
   }
 
-  function rebuildUnpinnedQuestions() {
-    setKit((current) => ({
-      ...current,
-      questions: current.questions.map((question) => {
-        if (question.id.startsWith('custom-') || pinnedQuestionIds.includes(question.id) || editedQuestionIds.includes(question.id)) return question;
-        return baselineQuestions.find((baseline) => baseline.id === question.id) || question;
-      })
-    }));
-    setStatus('Unpinned, untouched questions were rebuilt. Pinned and edited questions were preserved.');
+  async function rebuildUnpinnedQuestions() {
+    if (!kit) return;
+    setRegeneratingQuestions(true);
+    setError('');
+    try {
+      const revision = questionRevision + 1;
+      const response = await fetch('/api/questions/regenerate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requirements: kit.role.requirements, companyBrief: kit.company_brief, revision })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not regenerate questions');
+      const generatedById = new Map(data.questions.map((question) => [question.id, question]));
+      setKit((current) => ({
+        ...current,
+        questions: current.questions.map((question) => (
+          question.id.startsWith('custom-') || pinnedQuestionIds.includes(question.id) || editedQuestionIds.includes(question.id)
+            ? question
+            : generatedById.get(question.id) || question
+        )),
+        coverage: { ...current.coverage, ...data.coverage }
+      }));
+      setBaselineQuestions(data.questions);
+      setQuestionRevision(revision);
+      setStatus('Fresh question variants generated. Pinned, edited, and custom questions were preserved.');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setRegeneratingQuestions(false);
+    }
   }
 
   async function saveChanges() {
@@ -313,7 +338,7 @@ export default function HomePage() {
               <section>
                 <div className="section-header mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div><h2 className="m-0 text-lg font-bold text-ink">Questions</h2><p className="mb-0 mt-1 text-sm text-slate-600">Edit, move, pin, or remove prompts before your next practice round.</p></div>
-                  <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><button type="button" onClick={rebuildUnpinnedQuestions} className="link-button text-sm font-bold text-mint underline">Rebuild unpinned</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
+                  <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><button type="button" onClick={rebuildUnpinnedQuestions} disabled={regeneratingQuestions} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingQuestions ? 'Regenerating...' : 'Regenerate unpinned'}</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
                 </div>
                 <div className="question-list grid gap-3">{kit.questions.map((question, index) => <QuestionEditor key={question.id} question={question} index={index} total={kit.questions.length} pinned={pinnedQuestionIds.includes(question.id)} onChange={(prompt) => updateQuestion(question.id, prompt)} onMove={(direction) => moveQuestion(question.id, direction)} onPin={() => setPinnedQuestionIds((current) => current.includes(question.id) ? current.filter((id) => id !== question.id) : [...current, question.id])} onDelete={() => setKit((current) => ({ ...current, questions: current.questions.filter((item) => item.id !== question.id) }))} />)}</div>
               </section>
