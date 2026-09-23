@@ -1,4 +1,4 @@
-import { createKit } from '../../../src/core.mjs';
+import { buildKit } from '../../../src/pipeline.mjs';
 import { sessionCookie, store } from '../../../src/storage.mjs';
 
 export async function GET(request) {
@@ -10,7 +10,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const payload = await request.json();
-    const kit = createKit({
+    const kit = await buildKit({
       id: payload.id || crypto.randomUUID(),
       jd: payload.jd,
       company_url: payload.companyUrl,

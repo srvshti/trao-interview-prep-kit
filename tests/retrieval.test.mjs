@@ -13,6 +13,11 @@ test('rejects local and private URL targets', () => {
   }
 });
 
+test('allows local URLs only when an explicit evaluator option is supplied', () => {
+  const url = parsePublicHttpUrl('http://localhost:8099/acme/', { allowPrivateNetwork: true });
+  assert.equal(url.hostname, 'localhost');
+});
+
 test('rejects non-http protocols and credential URLs', () => {
   assert.throws(() => parsePublicHttpUrl('file:///etc/passwd'), /Only http and https/);
   assert.throws(() => parsePublicHttpUrl('https://user:secret@example.com'), /credentials/);

@@ -9,13 +9,13 @@ function pageScore(link) {
   return matches * 10 - link.url.length / 10;
 }
 
-export function selectRelevantLinks(rootUrl, links) {
-  const root = parsePublicHttpUrl(rootUrl);
+export function selectRelevantLinks(rootUrl, links, options = {}) {
+  const root = parsePublicHttpUrl(rootUrl, options);
   const seen = new Set([root.toString()]);
   return links
     .filter((link) => {
       try {
-        const url = parsePublicHttpUrl(link.url);
+        const url = parsePublicHttpUrl(link.url, options);
         return url.origin === root.origin && PAGE_HINTS.test(`${link.label} ${url.pathname}`) && !seen.has(url.toString());
       } catch {
         return false;
@@ -34,15 +34,33 @@ function firstUsefulSentence(text) {
   return text.split(/(?<=[.!?])\s+/).find((sentence) => sentence.length >= 60)?.slice(0, 500) || text.slice(0, 500);
 }
 
-export async function researchCompany(companyUrl) {
-  const root = await fetchPublicPage(companyUrl);
-  const selected = selectRelevantLinks(root.url, root.links);
+async function pause(milliseconds) {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function fetchWithRetry(url, options, attempts = 3) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetchPublicPage(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) await pause(250 * (2 ** attempt));
+    }
+  }
+  throw lastError;
+}
+
+export async function researchCompany(companyUrl, options = {}) {
+  const root = await fetchWithRetry(companyUrl, options);
+  const selected = selectRelevantLinks(root.url, root.links, options);
   const pages = [root];
   const fetchErrors = [];
 
   for (const link of selected) {
     try {
-      pages.push(await fetchPublicPage(link.url));
+      await pause(150);
+      pages.push(await fetchWithRetry(link.url, options));
     } catch (error) {
       fetchErrors.push({ url: link.url, error: error.message || 'Page could not be retrieved' });
     }

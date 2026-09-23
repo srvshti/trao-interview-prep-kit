@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { createKit } from "../src/core.mjs";
+import { buildKit } from "../src/pipeline.mjs";
 
 function argument(name) {
   const index = process.argv.indexOf(name);
@@ -16,17 +16,18 @@ if (!inputPath || !outputPath) {
 const cases = JSON.parse(await readFile(inputPath, "utf8"));
 if (!Array.isArray(cases)) throw new Error("input must be a JSON array");
 
-const kits = cases.map((entry) => {
+const kits = [];
+for (const entry of cases) {
   try {
-    return { id: entry.id, status: "ok", kit: createKit(entry), error: null };
+    kits.push({ id: entry.id, status: "ok", kit: await buildKit(entry, { allowPrivateNetwork: true }), error: null });
   } catch (error) {
-    return {
+    kits.push({
       id: entry.id,
       status: "failed",
       kit: null,
       error: { code: "KIT_GENERATION_FAILED", message: error instanceof Error ? error.message : "Unknown error" }
-    };
+    });
   }
-});
+}
 
 await writeFile(outputPath, JSON.stringify({ version: "1.0", generated_at: new Date().toISOString(), kits }, null, 2));

@@ -53,7 +53,7 @@ function extractLinks(html, baseUrl) {
   return [...links.values()].slice(0, 150);
 }
 
-export function parsePublicHttpUrl(value) {
+export function parsePublicHttpUrl(value, { allowPrivateNetwork = false } = {}) {
   let url;
   try {
     url = new URL(value);
@@ -65,17 +65,17 @@ export function parsePublicHttpUrl(value) {
   if (url.username || url.password) throw new Error('URLs with credentials are not allowed');
 
   const hostname = url.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')
-    || isPrivateIpv4(hostname) || isPrivateIpv6(hostname)) {
+  if (!allowPrivateNetwork && (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')
+    || isPrivateIpv4(hostname) || isPrivateIpv6(hostname))) {
     throw new Error('Local or private network URLs are not allowed');
   }
   return url;
 }
 
-export async function assertPublicDns(url) {
+export async function assertPublicDns(url, { allowPrivateNetwork = false } = {}) {
   const records = await dns.lookup(url.hostname, { all: true, verbatim: true });
   if (!records.length) throw new Error('Domain did not resolve');
-  if (records.some((record) => isPrivateIpv4(record.address) || isPrivateIpv6(record.address))) {
+  if (!allowPrivateNetwork && records.some((record) => isPrivateIpv4(record.address) || isPrivateIpv6(record.address))) {
     throw new Error('URL resolves to a private network address');
   }
 }
@@ -112,18 +112,18 @@ async function fetchWithLimits(url, { timeoutMs = DEFAULT_TIMEOUT_MS, accept = '
   return { contentType, text: new TextDecoder().decode(body) };
 }
 
-export async function fetchPublicPage(rawUrl, options = {}) {
-  const url = parsePublicHttpUrl(rawUrl);
-  await assertPublicDns(url);
+export async function fetchPublicPage(rawUrl, { allowPrivateNetwork = false, ...fetchOptions } = {}) {
+  const url = parsePublicHttpUrl(rawUrl, { allowPrivateNetwork });
+  await assertPublicDns(url, { allowPrivateNetwork });
   const robotsUrl = new URL('/robots.txt', url.origin);
   try {
-    const robots = await fetchWithLimits(robotsUrl, { ...options, accept: 'text/plain,*/*;q=0.1' });
+    const robots = await fetchWithLimits(robotsUrl, { ...fetchOptions, accept: 'text/plain,*/*;q=0.1' });
     if (!robotsAllows(robots.text, url.pathname)) throw new Error('This path is disallowed by robots.txt');
   } catch (error) {
     if (error.message === 'This path is disallowed by robots.txt') throw error;
   }
 
-  const page = await fetchWithLimits(url, options);
+  const page = await fetchWithLimits(url, fetchOptions);
   const title = extractAttribute(page.text, /<title[^>]*>([\s\S]*?)<\/title>/i);
   const description = extractAttribute(page.text, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["'][^>]*>/i)
     || extractAttribute(page.text, /<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["'][^>]*>/i);
