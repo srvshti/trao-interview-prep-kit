@@ -49,8 +49,19 @@ function QuestionEditor({ question, index, total, pinned, onChange, onMove, onPi
           <button type="button" onClick={onDelete} className="text-rose-700">Delete</button>
         </div>
       </div>
-      <textarea aria-label={`Question ${question.id}`} value={question.prompt} onChange={(event) => onChange(event.target.value)} className="mt-3 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm leading-6" />
-      <p className="mb-0 mt-3 text-sm leading-6 text-slate-600">{question.answer_outline}</p>
+      <label className="mt-3 block text-xs font-bold uppercase text-slate-500">Category<select aria-label={`Category for ${question.id}`} value={question.category} onChange={(event) => onChange({ category: event.target.value })} className="ml-2 border border-slate-300 bg-white px-2 py-1 text-sm font-normal normal-case text-slate-700"><option value="technical">Technical</option><option value="behavioural">Behavioural</option><option value="system-design">System design</option><option value="company-fit">Company fit</option></select></label>
+      <textarea aria-label={`Question ${question.id}`} value={question.prompt} onChange={(event) => onChange({ prompt: event.target.value })} className="mt-3 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm leading-6" />
+      <textarea aria-label={`Answer outline for ${question.id}`} value={question.answer_outline} onChange={(event) => onChange({ answer_outline: event.target.value })} className="mt-3 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm leading-6 text-slate-600" />
+    </article>
+  );
+}
+
+function FlashcardEditor({ card, onChange, onDelete }) {
+  return (
+    <article className="question-editor border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3"><p className="m-0 text-xs font-bold uppercase text-slate-500">{card.id}</p><button type="button" onClick={onDelete} className="text-sm font-bold text-rose-700">Delete</button></div>
+      <textarea aria-label={`Flashcard front ${card.id}`} value={card.front} onChange={(event) => onChange({ front: event.target.value })} className="mt-3 min-h-16 w-full resize-y border border-slate-300 p-3 text-sm leading-6" />
+      <textarea aria-label={`Flashcard back ${card.id}`} value={card.back} onChange={(event) => onChange({ back: event.target.value })} className="mt-3 min-h-16 w-full resize-y border border-slate-300 p-3 text-sm leading-6 text-slate-600" />
     </article>
   );
 }
@@ -163,9 +174,19 @@ export default function HomePage() {
     }
   }
 
-  function updateQuestion(id, prompt) {
-    setKit((current) => ({ ...current, questions: current.questions.map((question) => question.id === id ? { ...question, prompt } : question) }));
+  function updateQuestion(id, patch) {
+    setKit((current) => ({ ...current, questions: current.questions.map((question) => question.id === id ? { ...question, ...patch } : question) }));
     setEditedQuestionIds((current) => current.includes(id) ? current : [...current, id]);
+  }
+
+  function deleteQuestion(id) {
+    setKit((current) => ({
+      ...current,
+      questions: current.questions.filter((question) => question.id !== id),
+      schedule: { ...current.schedule, days: current.schedule.days.map((day) => ({ ...day, question_ids: day.question_ids.filter((questionId) => questionId !== id) })) }
+    }));
+    setPinnedQuestionIds((current) => current.filter((questionId) => questionId !== id));
+    setEditedQuestionIds((current) => current.filter((questionId) => questionId !== id));
   }
 
   function moveQuestion(id, direction) {
@@ -182,7 +203,7 @@ export default function HomePage() {
   function addQuestion() {
     setKit((current) => {
       const requirement = current.role.requirements.find((item) => item.priority === 'must') || current.role.requirements[0];
-      const question = { id: `custom-${Date.now()}`, requirement_ids: requirement ? [requirement.id] : [], category: 'technical', prompt: 'Add your custom interview question', answer_outline: 'Add the answer structure and evidence you want to practice.', difficulty: 2 };
+      const question = { id: `custom-${Date.now()}`, requirement_ids: requirement ? [requirement.id] : [], category: selectedQuestionCategory, prompt: 'Add your custom interview question', answer_outline: 'Add the answer structure and evidence you want to practice.', difficulty: 2 };
       return { ...current, questions: [...current.questions, question] };
     });
     setStatus('Custom question added at the bottom. Edit it, then pin it or save your changes.');
@@ -201,6 +222,23 @@ export default function HomePage() {
     setCoveredCardIds((current) => current.includes(id) ? current : [...current, id]);
     setRevealedCardIds((current) => current.filter((cardId) => cardId !== id));
     setPracticeIndex(0);
+  }
+
+  function updateBrief(patch) {
+    setKit((current) => ({ ...current, company_brief: { ...current.company_brief, ...patch } }));
+  }
+
+  function updateFlashcard(id, patch) {
+    setKit((current) => ({ ...current, flashcards: current.flashcards.map((card) => card.id === id ? { ...card, ...patch } : card) }));
+  }
+
+  function addFlashcard() {
+    setKit((current) => {
+      const requirement = current.role.requirements.find((item) => item.priority === 'must') || current.role.requirements[0];
+      const card = { id: `custom-card-${Date.now()}`, front: 'Add a flashcard prompt', back: 'Add the answer or cue you want to recall.', requirement_ids: requirement ? [requirement.id] : [] };
+      return { ...current, flashcards: [...current.flashcards, card] };
+    });
+    setStatus('Custom flashcard added. Edit it, then save your changes.');
   }
 
   async function regenerateQuestionCategory() {
@@ -343,7 +381,8 @@ export default function HomePage() {
                     </button>
                   </div>
                 </div>
-                <p className="mb-0 mt-4 text-sm leading-6 text-slate-600">{kit.company_brief.summary}</p>
+                <label className="mt-4 block text-xs font-bold uppercase text-slate-500">Company brief<textarea aria-label="Company brief summary" value={kit.company_brief.summary} onChange={(event) => updateBrief({ summary: event.target.value })} className="mt-2 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
+                <label className="mt-3 block text-xs font-bold uppercase text-slate-500">What they do<textarea aria-label="What the company does" value={kit.company_brief.what_they_do} onChange={(event) => updateBrief({ what_they_do: event.target.value })} className="mt-2 min-h-16 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
                 {kit.company_brief.sources?.[0] && <a className="mt-3 inline-block text-sm font-semibold text-mint underline" href={kit.company_brief.sources[0].url} target="_blank" rel="noreferrer">Source: {kit.company_brief.sources[0].title || kit.company_brief.sources[0].url}</a>}
               </div>
 
@@ -370,7 +409,7 @@ export default function HomePage() {
                   <div><h2 className="m-0 text-lg font-bold text-ink">Questions</h2><p className="mb-0 mt-1 text-sm text-slate-600">Edit, move, pin, or remove prompts before your next practice round.</p></div>
                   <div className="toolbar flex flex-wrap gap-3"><button type="button" onClick={addQuestion} className="link-button text-sm font-bold text-mint underline">Add question</button><label className="text-sm font-semibold text-slate-700">Category<select value={selectedQuestionCategory} onChange={(event) => setSelectedQuestionCategory(event.target.value)} className="ml-2 border border-slate-300 bg-white px-2 py-1 text-sm">{regenerableCategories.map((category) => <option key={category} value={category}>{category === 'technical' ? 'Technical' : 'Behavioural'}</option>)}</select></label><button type="button" onClick={regenerateQuestionCategory} disabled={regeneratingQuestions || regenerableCategories.length === 0} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingQuestions ? 'Regenerating...' : 'Regenerate category'}</button><button type="button" onClick={saveChanges} className="primary-button bg-mint px-3 py-2 text-sm font-bold text-white hover:bg-emerald-800">Save edits</button></div>
                 </div>
-                <div className="question-list grid gap-3">{kit.questions.map((question, index) => <QuestionEditor key={question.id} question={question} index={index} total={kit.questions.length} pinned={pinnedQuestionIds.includes(question.id)} onChange={(prompt) => updateQuestion(question.id, prompt)} onMove={(direction) => moveQuestion(question.id, direction)} onPin={() => setPinnedQuestionIds((current) => current.includes(question.id) ? current.filter((id) => id !== question.id) : [...current, question.id])} onDelete={() => setKit((current) => ({ ...current, questions: current.questions.filter((item) => item.id !== question.id) }))} />)}</div>
+                <div className="question-list grid gap-3">{kit.questions.map((question, index) => <QuestionEditor key={question.id} question={question} index={index} total={kit.questions.length} pinned={pinnedQuestionIds.includes(question.id)} onChange={(patch) => updateQuestion(question.id, patch)} onMove={(direction) => moveQuestion(question.id, direction)} onPin={() => setPinnedQuestionIds((current) => current.includes(question.id) ? current.filter((id) => id !== question.id) : [...current, question.id])} onDelete={() => deleteQuestion(question.id)} />)}</div>
               </section>
 
               <section>
@@ -379,6 +418,11 @@ export default function HomePage() {
                   <span className="text-sm font-semibold text-slate-500">{coveredCardIds.length}/{kit.flashcards.length} covered</span>
                 </div>
                 {activePracticeCard && <Flashcard card={activePracticeCard} score={scores[activePracticeCard.id]} revealed={revealedCardIds.includes(activePracticeCard.id)} onReveal={revealCard} onScore={scoreCard} onNext={advancePractice} />}
+              </section>
+
+              <section>
+                <div className="section-header mb-3 flex flex-wrap items-end justify-between gap-3"><div><h2 className="m-0 text-lg font-bold text-ink">Flashcard editor</h2><p className="mb-0 mt-1 text-sm text-slate-600">Edit, add, or remove the cues used in practice mode.</p></div><button type="button" onClick={addFlashcard} className="link-button text-sm font-bold text-mint underline">Add flashcard</button></div>
+                <div className="question-list grid gap-3">{kit.flashcards.map((card) => <FlashcardEditor key={card.id} card={card} onChange={(patch) => updateFlashcard(card.id, patch)} onDelete={() => setKit((current) => ({ ...current, flashcards: current.flashcards.filter((item) => item.id !== card.id) }))} />)}</div>
               </section>
             </div>
           )}
