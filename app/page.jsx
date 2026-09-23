@@ -158,7 +158,7 @@ export default function HomePage() {
       const response = await fetch('/api/kits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not build preparation kit');
-      setKit(data.kit);
+      setKit({ ...data.kit, editor_state: { pinned_question_ids: [], edited_question_ids: [] } });
       setSavedId(data.savedId);
       setPinnedQuestionIds([]);
       setEditedQuestionIds([]);
@@ -175,8 +175,8 @@ export default function HomePage() {
   }
 
   function updateQuestion(id, patch) {
-    setKit((current) => ({ ...current, questions: current.questions.map((question) => question.id === id ? { ...question, ...patch } : question) }));
     setEditedQuestionIds((current) => current.includes(id) ? current : [...current, id]);
+    setKit((current) => ({ ...current, questions: current.questions.map((question) => question.id === id ? { ...question, ...patch } : question) }));
   }
 
   function deleteQuestion(id) {
@@ -282,7 +282,8 @@ export default function HomePage() {
       return;
     }
     setError('');
-    const response = await fetch(`/api/kits/${savedId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kit }) });
+    const kitToSave = { ...kit, editor_state: { ...kit.editor_state, pinned_question_ids: pinnedQuestionIds, edited_question_ids: editedQuestionIds } };
+    const response = await fetch(`/api/kits/${savedId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kit: kitToSave }) });
     const data = await response.json();
     if (!response.ok) { setError(data.error || 'Could not save kit changes'); return; }
     setStatus('Kit changes saved privately.');
@@ -357,7 +358,7 @@ export default function HomePage() {
           </form>
           {status && <p className="status mb-0 mt-4 text-sm font-semibold text-mint" role="status">{status}</p>}
           {error && <p className="error mb-0 mt-4 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
-          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds([]); setEditedQuestionIds([]); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
+          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds(saved.kit.editor_state?.pinned_question_ids || []); setEditedQuestionIds(saved.kit.editor_state?.edited_question_ids || []); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
         </section>
 
         <section aria-live="polite">

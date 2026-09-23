@@ -1,72 +1,103 @@
 # Trao Interview Prep Kit
 
-This repository starts with the deterministic core of the assessment: requirement extraction, requirement-to-question coverage, schedule allocation, kit validation, and the mandatory batch entry point. It also contains a separate retrieval safety module for public web research.
+An interview-preparation workspace that turns a job description and company URL into an editable, requirement-linked practice kit. It keeps the critical planning rules deterministic while allowing Gemini generation when a key is configured.
 
-## Run the tests
+## What it does
+
+- Extracts stable requirement IDs from a job description and classifies them as `must` or `nice`.
+- Safely retrieves the supplied company website, then follows a small set of high-signal same-origin pages.
+- Builds a cited company brief, requirement-linked technical and behavioural prompts, flashcards, and an exact daily schedule.
+- Performs a second coverage pass so every must-have requirement has a question and a scheduled practice slot.
+- Lets a signed-in user save private kits; questions and flashcards can be edited, reordered, added, deleted, and pinned.
+- Supports single-category question regeneration while preserving pinned, edited, and custom prompts.
+- Runs a one-card practice loop: reveal an answer, rate confidence, and revisit weak or uncovered cards first.
+- Provides the required batch evaluator, returning one result per case even when retrieval for a case fails.
+
+## Architecture
+
+```text
+Browser UI
+  -> Next.js API routes
+    -> shared buildKit pipeline
+       -> requirement extraction -> company research -> question generation
+       -> deterministic coverage repair -> schedule allocation -> validation
+    -> local file-store adapter (development only)
+```
+
+`src/pipeline.mjs` is the shared entry point used by both the browser API and `npm run evaluate`. That keeps the interactive path and batch path on the same generation, research, coverage, and validation rules.
+
+### Research safety
+
+`src/retrieval.mjs` accepts only public HTTP(S) targets. It rejects credentials, loopback/private addresses, unsafe DNS results, redirects, oversized payloads, and unsupported content types. It also respects `robots.txt`, uses bounded timeouts, rate limits page fetches, and retries transient failures with backoff. Failed pages are recorded in the audit rather than failing the whole kit.
+
+### Generation
+
+The deterministic generator is always available and is the fallback if Gemini is not configured or gives an invalid result. With `GEMINI_API_KEY` set, `src/ai-generation.mjs` requests schema-shaped technical and behavioural prompt drafts, validates every result against existing requirement IDs, and retains deterministic coverage repair as the final correctness guard.
+
+The model adapter is deliberately isolated in `src/llm.mjs`, with timeout and transient-error retry handling. Retrieved page text is treated as untrusted context in prompts.
+
+## Local setup
+
+Requires Node.js 20 or newer.
+
+```bash
+npm install
+cp .env.example .env.local
+npm test
+npm run build
+npm start
+```
+
+Open `http://localhost:3000`.
+
+`npm start` runs the standalone production build. The build script copies static assets into the standalone folder, so use `npm run build` again after code changes before restarting it.
+
+For faster development you may use `npm run dev`.
+
+## Optional Gemini configuration
+
+Create a Gemini API key in Google AI Studio and place it in `.env.local`; do not commit the file or paste the key into the application.
+
+```bash
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-3.5-flash
+```
+
+Without a key, kit generation remains functional using deterministic prompt templates. `TRAO_COOKIE_SECURE=false` is appropriate for local HTTP development; set it to `true` only for HTTPS deployment.
+
+## Batch evaluator
+
+```bash
+npm run evaluate -- --input examples/cases.json --output kits.json
+```
+
+Input is an array of `{ id, jd, company_url, days }` objects. Output follows the required wrapper shape:
+
+```json
+{ "results": [{ "id": "case-id", "status": "ok", "kit": {} }] }
+```
+
+The evaluator continues past bad cases and writes an error object for failures. It permits local test URLs only through its explicit evaluator option; the browser route stays protected from private-network targets.
+
+## Tests
 
 ```bash
 npm test
 ```
 
-## Run the web application
+The test suite covers requirement extraction, must-have coverage, schedule allocation, malformed input, retrieval safety, research failure handling, local privacy boundaries, Gemini response validation/retry behavior, and the shared pipeline.
 
-```bash
-npm run dev
-```
+## Current limitations and next deployment step
 
-Visit `http://localhost:3000`. For a production-mode local run, use `npm run build && npm start`.
+The local file store (`data/store.json`) is intentionally a development adapter. It stores password hashes and opaque session-token hashes, but it is not suitable for a serverless or multi-instance deployment because local disks are ephemeral. Before publishing, replace `src/storage.mjs` with a managed database adapter and deploy the Next.js service with persistent storage.
 
-The container endpoint is `GET /api/health`.
+The application currently researches company-owned pages. Public interview-discussion search is a separate source type that still needs a configured search provider and its own citation/audit adapter. No public deployment is included in this repository yet.
+
+## Docker
 
 ```bash
 docker build -t trao-prep-kit .
 docker run --rm -p 3000:3000 trao-prep-kit
 ```
 
-## Batch evaluation contract
-
-```bash
-npm run evaluate -- --input cases.json --output kits.json
-```
-
-The command reads an array of `{ id, jd, company_url, days }` cases and emits the Appendix B wrapper shape. It continues when one case fails.
-
-Try the included representative case:
-
-```bash
-npm run evaluate -- --input examples/cases.json --output kits.json
-```
-
-## Retrieval safety module
-
-`src/retrieval.mjs` is deliberately isolated from generation and UI logic. Before a page can be read, it:
-
-- permits only absolute `http` and `https` URLs;
-- rejects credentials, localhost names, and private-network IP ranges;
-- resolves DNS and rejects targets that resolve to a private address;
-- checks `robots.txt`, uses short timeouts, rejects redirects, and caps response sizes;
-- accepts only HTML or plain-text responses and reduces them to bounded text.
-
-This is an application-side safety baseline. A production deployment should also apply outbound-network policy at the infrastructure layer.
-
-## Research and generation pipeline
-
-The app keeps the pipeline deliberately sequential and inspectable:
-
-1. Extract stable requirement IDs from the job description.
-2. Retrieve the supplied company page and select at most four high-signal same-origin pages, such as Careers, About, Culture, or Values.
-3. Preserve every retrieved page as a dated source citation; partial retrieval failures appear in the audit object instead of failing the kit.
-4. Generate category-aware questions from requirements and the retrieved company context.
-5. Run a separate deterministic coverage pass that adds a repair question for every uncovered must-have requirement.
-
-The current generator is deterministic so tests and batch output remain reproducible without secrets. `src/generation.mjs` is the provider boundary for replacing it with an LLM-backed implementation later; keep the coverage pass deterministic even after doing so.
-
-## Local accounts and persistence
-
-The development adapter stores hashed passwords, opaque session-token hashes, and private kits in `data/store.json`. This lets the local demo demonstrate login, ownership checks, and saved-kit editing without a hosted database. It is not suitable for serverless deployment because local disks are ephemeral. Replace `src/storage.mjs` with a database-backed adapter before deploying. Set `TRAO_COOKIE_SECURE=true` only when the deployment is served over HTTPS; keep it unset for `http://localhost` development.
-
-The builder supports editing, adding, deleting, moving, pinning, and privately saving questions. Its current deterministic rebuild action preserves pinned and edited questions and resets only untouched generated questions.
-
-## Deliberate next modules
-
-The next implementation steps are separate research/generation passes, persistence, the Next.js builder UI, practice mode, and deployment. The deterministic pieces are intentionally kept separate from external retrieval and model calls.
+The health endpoint is `GET /api/health`.
