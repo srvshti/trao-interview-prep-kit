@@ -93,6 +93,22 @@ The local file store (`data/store.json`) is intentionally a development adapter.
 
 The application currently researches company-owned pages. Public interview-discussion search is a separate source type that still needs a configured search provider and its own citation/audit adapter. No public deployment is included in this repository yet.
 
+### Hosted persistence with Supabase
+
+The repository now includes an optional Supabase REST adapter. To enable it:
+
+1. Create a Supabase project and run [`db/supabase-schema.sql`](db/supabase-schema.sql) in its SQL editor.
+2. Add the project URL and **server-only** service-role key to `.env.local` for local use, or to the deployment provider's encrypted environment variables:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_server_only_service_role_key
+```
+
+3. Keep both values out of Git and out of browser-exposed variables. When both are configured, the server automatically chooses the Supabase store; otherwise it keeps using the local file store.
+
+The service-role key is used only inside Next.js route handlers. Row-level security remains enabled on the tables as a defensive default; browser clients never access the tables directly.
+
 ## Docker
 
 ```bash
