@@ -1,4 +1,4 @@
-import { generateQuestionsForCategory } from '../../../../src/generation.mjs';
+import { generateQuestionDrafts } from '../../../../src/ai-generation.mjs';
 
 export async function POST(request) {
   try {
@@ -7,13 +7,15 @@ export async function POST(request) {
       throw new Error('requirements, category, and a positive integer revision are required');
     }
 
-    const questions = generateQuestionsForCategory(requirements, companyBrief, { category, variation: revision });
+    const generated = await generateQuestionDrafts(requirements, companyBrief, { category, variation: revision });
 
     return Response.json({
       status: 'ok',
-      questions,
+      questions: generated.questions,
       category,
-      revision
+      revision,
+      provider: generated.provider,
+      generation_errors: generated.errors
     });
   } catch (error) {
     return Response.json({ status: 'error', error: error.message || 'Questions could not be regenerated' }, { status: 400 });

@@ -394,6 +394,7 @@ export default function HomePage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not regenerate questions');
       const generatedById = new Map(data.questions.map((question) => [question.id, question]));
+      const replaceable = kit.questions.filter((question) => question.category === selectedQuestionCategory && !question.id.startsWith('custom-') && !pinnedQuestionIds.includes(question.id) && !editedQuestionIds.includes(question.id));
       setKit((current) => ({
         ...current,
         questions: current.questions.map((question) => (
@@ -403,7 +404,8 @@ export default function HomePage() {
         ))
       }));
       setQuestionRevision(revision);
-      setStatus(`Fresh ${selectedQuestionCategory} questions generated. Pinned, edited, custom, and other-category questions were preserved.`);
+      const preserved = kit.questions.length - replaceable.length;
+      setStatus(`${replaceable.length} ${selectedQuestionCategory} question${replaceable.length === 1 ? '' : 's'} regenerated using ${data.provider}. ${preserved} pinned, edited, custom, or other-category question${preserved === 1 ? ' was' : 's were'} preserved.`);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
