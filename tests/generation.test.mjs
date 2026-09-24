@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateFlashcards, generateQuestions, generateQuestionsForCategory, repairCoverage } from '../src/generation.mjs';
-import { selectRelevantLinks } from '../src/research.mjs';
+import { deriveCompanyBrief, selectRelevantLinks } from '../src/research.mjs';
 
 test('uses research context while generating a technical question', () => {
   const [question] = generateQuestions([{ id: 'r1', text: 'Build reliable APIs', kind: 'technical', priority: 'must' }], {
@@ -81,4 +81,21 @@ test('selects only high-signal same-origin research links', () => {
     { url: 'https://example.com/blog', label: 'Blog' }
   ]);
   assert.deepEqual(selected, [{ url: 'https://example.com/careers', label: 'Careers' }]);
+});
+
+test('does not repeat a company summary as the what-they-do field', () => {
+  const brief = deriveCompanyBrief([{
+    description: 'Acme provides workflow automation for operations teams.',
+    text: 'Acme provides workflow automation for operations teams. Acme provides workflow automation for operations teams.'
+  }]);
+  assert.equal(brief.summary, 'Acme provides workflow automation for operations teams.');
+  assert.match(brief.what_they_do, /did not provide a distinct operational description/i);
+});
+
+test('uses a distinct sourced sentence when one is available', () => {
+  const brief = deriveCompanyBrief([{
+    description: 'Acme provides workflow automation for operations teams.',
+    text: 'Acme provides workflow automation for operations teams. Its platform connects approval workflows to existing finance and support systems.'
+  }]);
+  assert.match(brief.what_they_do, /connects approval workflows/i);
 });
