@@ -52,7 +52,7 @@ async function fetchWithRetry(url, options, attempts = 3) {
   throw lastError;
 }
 
-export async function researchCompany(companyUrl, { interviewSearcher = searchInterviewDiscussions, ...options } = {}) {
+export async function researchCompany(companyUrl, { interviewSearcher = searchInterviewDiscussions, roleTitle = '', ...options } = {}) {
   const root = await fetchWithRetry(companyUrl, options);
   const selected = selectRelevantLinks(root.url, root.links, options);
   const pages = [root];
@@ -70,7 +70,7 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
   const summaries = pages.map((page) => page.description || firstUsefulSentence(page.text)).filter(Boolean);
   let interviewResearch;
   try {
-    interviewResearch = await interviewSearcher(companyNameFromUrl(companyUrl));
+    interviewResearch = await interviewSearcher(companyNameFromUrl(companyUrl), { roleTitle });
   } catch (error) {
     // Interview chatter is supplementary; it must not block company-site research.
     interviewResearch = {
@@ -79,7 +79,19 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
       provider: 'public-interview-search'
     };
   }
-  const interviewSummary = interviewResearch.sources.map((source) => source.snippet).filter(Boolean).join(' ').trim().slice(0, 900);
+  const interviewSummary = interviewResearch.sources
+    .map((source) => {
+      const scope = source.role_relevance === 'exact-role'
+        ? 'Role-specific discussion'
+        : source.role_relevance === 'related-role'
+          ? 'Related-role discussion'
+          : 'Company-wide interview discussion';
+      return `${scope}: ${source.snippet}`;
+    })
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .slice(0, 900);
   const sourceRecords = [
     ...pages.map((page) => ({ url: page.url, title: page.title, retrieved_at: page.retrievedAt, source_type: 'company-site' })),
     ...interviewResearch.sources

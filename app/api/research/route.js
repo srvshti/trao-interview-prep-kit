@@ -3,8 +3,8 @@ import { researchCompany } from '../../../src/research.mjs';
 
 export async function POST(request) {
   try {
-    const { companyUrl, requirements = [], includeQuestions = true } = await request.json();
-    const research = await researchCompany(companyUrl);
+    const { companyUrl, roleTitle = '', requirements = [], includeQuestions = true } = await request.json();
+    const research = await researchCompany(companyUrl, { roleTitle });
     const generated = includeQuestions
       ? repairCoverage(requirements, generateQuestions(requirements, research.companyBrief))
       : { questions: [], repaired_requirement_ids: [] };

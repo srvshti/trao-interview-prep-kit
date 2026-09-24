@@ -36,7 +36,7 @@ export async function buildKit(input, { researcher = researchCompany, allowPriva
   let audit;
 
   try {
-    const research = await researcher(input.company_url, { allowPrivateNetwork });
+    const research = await researcher(input.company_url, { allowPrivateNetwork, roleTitle: draft.role.title });
     companyBrief = normalizeCompanyBrief(research.companyBrief);
     audit = research.audit;
   } catch (error) {

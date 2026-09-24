@@ -6,37 +6,47 @@ test('derives a readable company search term from a company URL', () => {
   assert.equal(companyNameFromUrl('https://www.acme-workflows.com/careers'), 'acme workflows');
 });
 
-test('records public interview discussion citations separately from company sources', async () => {
+test('records a role-specific public discussion citation separately from company sources', async () => {
   const result = await searchInterviewDiscussions('Acme', {
+    roleTitle: 'Backend Engineer',
     fetcher: async () => new Response(JSON.stringify({
-      data: { children: [{ data: { title: 'Acme interview experience', selftext: 'I had a system design round and a behavioural round.', permalink: '/r/jobs/comments/abc/acme' } }] }
+      data: { children: [{ data: { title: 'Acme backend engineer interview experience', selftext: 'I had a systems design round.', permalink: '/r/jobs/comments/abc/acme' } }] }
     }), { status: 200 }),
     retries: 1
   });
   assert.equal(result.provider, 'reddit-public-search');
   assert.equal(result.sources.length, 1);
   assert.equal(result.sources[0].source_type, 'public-interview-discussion');
+  assert.equal(result.sources[0].role_relevance, 'exact-role');
   assert.match(result.sources[0].url, /reddit\.com\/r\/jobs/);
 });
 
-test('tries a role-specific public query when the broad query has no results', async () => {
+test('uses the parsed role title before trying company-wide interview discussion', async () => {
   const requestedQueries = [];
   const result = await searchInterviewDiscussions('Acme', {
+    roleTitle: 'Data Analyst',
     fetcher: async (url) => {
-      requestedQueries.push(new URL(url).searchParams.get('q'));
-      const hasResults = requestedQueries.length === 2;
-      return new Response(JSON.stringify({
-        data: { children: hasResults ? [{ data: { title: 'Acme engineering interview', selftext: 'Technical screen followed by systems discussion.', permalink: '/r/jobs/comments/def/acme' } }] : [] }
-      }), { status: 200 });
+      const parsed = new URL(url);
+      requestedQueries.push(parsed.searchParams.get('q') || parsed.searchParams.get('query'));
+      if (parsed.hostname === 'www.reddit.com') {
+        return new Response(JSON.stringify({ data: { children: [] } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ hits: [] }), { status: 200 });
     },
     retries: 1
   });
-  assert.deepEqual(requestedQueries, ['Acme interview experience', 'Acme software engineer interview']);
-  assert.equal(result.sources.length, 1);
+  assert.deepEqual(requestedQueries, [
+    'Acme Data Analyst interview',
+    'Acme Data Analyst interview',
+    'Acme interview experience',
+    'Acme interview experience'
+  ]);
+  assert.equal(result.sources.length, 0);
 });
 
-test('falls back to a citable Hacker News discussion when Reddit rejects the request', async () => {
+test('does not present an unrelated engineering discussion as data analyst guidance', async () => {
   const result = await searchInterviewDiscussions('Stripe', {
+    roleTitle: 'Data Analyst',
     fetcher: async (url) => {
       if (new URL(url).hostname === 'www.reddit.com') return new Response('blocked', { status: 403 });
       return new Response(JSON.stringify({
@@ -51,5 +61,27 @@ test('falls back to a citable Hacker News discussion when Reddit rejects the req
     retries: 1
   });
   assert.equal(result.provider, 'hacker-news-public-search');
+  assert.equal(result.sources.length, 1);
+  assert.equal(result.sources[0].role_relevance, 'company-wide');
+});
+
+test('falls back to a related role source when the exact role source is not available', async () => {
+  const result = await searchInterviewDiscussions('Stripe', {
+    roleTitle: 'Backend Engineer',
+    fetcher: async (url) => {
+      if (new URL(url).hostname === 'www.reddit.com') return new Response('blocked', { status: 403 });
+      return new Response(JSON.stringify({
+        hits: [{
+          objectID: '456',
+          title: 'Stripe Interview for Software Engineer',
+          url: 'https://example.com/stripe-interview',
+          story_text: 'A candidate described the Stripe engineering interview process.'
+        }]
+      }), { status: 200 });
+    },
+    retries: 1
+  });
+  assert.equal(result.provider, 'hacker-news-public-search');
   assert.equal(result.sources[0].url, 'https://example.com/stripe-interview');
+  assert.equal(result.sources[0].role_relevance, 'related-role');
 });

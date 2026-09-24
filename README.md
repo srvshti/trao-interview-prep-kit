@@ -10,7 +10,7 @@ The preferred stack is Next.js/Tailwind, Node/Express, and MongoDB. This impleme
 
 - Extracts stable requirement IDs from a job description and classifies them as `must` or `nice`.
 - Safely retrieves the supplied company website, then follows a small set of high-signal same-origin pages.
-- Separately searches public Reddit discussions for company interview-process signals; those sources are labeled as unverified community evidence and remain distinct from company-owned pages.
+- Separately searches public Reddit and Hacker News discussions for company interview-process signals. It searches the extracted role title first, then falls back to a clearly labeled company-wide discussion only when role-specific evidence is unavailable.
 - Builds a cited company brief, requirement-linked technical and behavioural prompts, flashcards, and an exact daily schedule.
 - Performs a second coverage pass so every must-have requirement has a question and a scheduled practice slot.
 - Lets a signed-in user save private kits; questions and flashcards can be edited, reordered, added, deleted, and pinned.
@@ -125,7 +125,7 @@ The test suite covers requirement extraction, must-have coverage, schedule alloc
 
 The local file store (`data/store.json`) is intentionally a development fallback. It stores password hashes and opaque session-token hashes, but it is not suitable for a serverless or multi-instance deployment because local disks are ephemeral. The Supabase adapter below is the production persistence path.
 
-Company-owned pages and public interview discussions are fetched through separate adapters and recorded independently in `research_audit`. Community posts can influence the emphasis of generated questions, but are not presented as verified company facts.
+Company-owned pages and public interview discussions are fetched through separate adapters and recorded independently in `research_audit`. The research adapter receives the extracted role title, so `Backend Engineer` and `Data Analyst` trigger different public-discussion queries. Returned citations carry `exact-role`, `related-role`, or `company-wide` relevance labels; a company-wide source is never displayed as though it were role-specific. Community posts can influence the emphasis of generated questions, but are not presented as verified company facts.
 
 The deployed application is available at [trao-interview-prep-kit-ip3e.vercel.app](https://trao-interview-prep-kit-ip3e.vercel.app/). Vercel supplies the HTTPS runtime for the Next.js UI and API routes; Supabase provides durable server-side storage when its two server-only environment variables are configured.
 
