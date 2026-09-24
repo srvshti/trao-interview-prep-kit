@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parsePublicHttpUrl } from '../src/retrieval.mjs';
+import { decodeHtmlEntities, parsePublicHttpUrl } from '../src/retrieval.mjs';
+
+test('decodes named, decimal, and hexadecimal HTML entities from scraped content', () => {
+  assert.equal(decodeHtmlEntities('doesn&#x27;t &amp; won&#39;t &quot;break&quot;'), 'doesn\'t & won\'t "break"');
+});
 
 test('accepts a normal public https URL', () => {
   const url = parsePublicHttpUrl('https://example.com/careers');

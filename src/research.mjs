@@ -35,6 +35,19 @@ function firstUsefulSentence(text) {
   return text.split(/(?<=[.!?])\s+/).find((sentence) => sentence.length >= 60)?.slice(0, 500) || text.slice(0, 500);
 }
 
+function uniqueSummaries(summaries) {
+  const unique = [];
+  for (const summary of summaries) {
+    const normalized = summary.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!normalized || unique.some((existing) => {
+      const existingNormalized = existing.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return existingNormalized === normalized || existingNormalized.includes(normalized) || normalized.includes(existingNormalized);
+    })) continue;
+    unique.push(summary);
+  }
+  return unique;
+}
+
 async function pause(milliseconds) {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -67,7 +80,7 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
     }
   }
 
-  const summaries = pages.map((page) => page.description || firstUsefulSentence(page.text)).filter(Boolean);
+  const summaries = uniqueSummaries(pages.map((page) => page.description || firstUsefulSentence(page.text)).filter(Boolean));
   let interviewResearch;
   try {
     interviewResearch = await interviewSearcher(companyNameFromUrl(companyUrl), { roleTitle });
@@ -79,6 +92,13 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
       provider: 'public-interview-search'
     };
   }
+  const officialProcessSources = pages.flatMap((page) => {
+    const formats = [];
+    if (/take[ -]?home|take[ -]?home assignment/i.test(page.text)) formats.push('take-home exercise');
+    if (/system design|architecture round/i.test(page.text)) formats.push('system-design discussion');
+    if (!formats.length) return [];
+    return [{ url: page.url, title: page.title || page.url, snippet: `Company-published page mentions: ${formats.join(' and ')}.`, source_type: 'company-site', role_relevance: 'company-wide' }];
+  });
   const interviewSummary = interviewResearch.sources
     .map((source) => {
       const scope = source.role_relevance === 'exact-role'
@@ -92,6 +112,7 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
     .join(' ')
     .trim()
     .slice(0, 900);
+  const officialProcessSummary = officialProcessSources.map((source) => source.snippet).join(' ');
   const sourceRecords = [
     ...pages.map((page) => ({ url: page.url, title: page.title, retrieved_at: page.retrievedAt, source_type: 'company-site' })),
     ...interviewResearch.sources
@@ -103,8 +124,8 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
       // Preserve that uncertainty in the kit instead of rendering an empty brief field.
       what_they_do: summaries.slice(0, 3).join(' ') || 'No verified company context was retrieved from the supplied website.',
       interview_process: {
-        summary: interviewSummary || 'No public interview discussion was retrieved.',
-        sources: interviewResearch.sources
+        summary: [officialProcessSummary, interviewSummary].filter(Boolean).join(' ').slice(0, 900) || 'No public interview discussion was retrieved.',
+        sources: [...officialProcessSources, ...interviewResearch.sources]
       },
       // Appendix A requires source URLs, while source metadata stays in the audit trail.
       sources: sourceRecords.map((source) => source.url)

@@ -1,6 +1,6 @@
 import { allocateSchedule, createKit, findCoverageGaps, validateKit } from './core.mjs';
 import { generateQuestionDrafts } from './ai-generation.mjs';
-import { repairCoverage } from './generation.mjs';
+import { generateFlashcards, repairCoverage } from './generation.mjs';
 import { researchCompany } from './research.mjs';
 
 function partialResearchBrief(error) {
@@ -59,6 +59,7 @@ export async function buildKit(input, { researcher = researchCompany, allowPriva
       sources: (companyBrief.sources || []).map(sourceUrl).filter(Boolean)
     },
     questions: repaired.questions,
+    flashcards: generateFlashcards(draft.role.requirements),
     schedule: allocateSchedule(repaired.questions, draft.role.requirements, Number(input.days)),
     coverage: { uncovered_requirement_ids: uncovered, repaired_requirement_ids: repaired.repaired_requirement_ids, passes: 2 },
     research_audit: audit,

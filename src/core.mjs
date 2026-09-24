@@ -1,12 +1,14 @@
 const MUST_MARKERS = /\b(required|must have|must-have|essential|need to have|you will need|we are looking for)\b/i;
 const NICE_MARKERS = /\b(nice to have|nice-to-have|preferred|bonus|plus|good to have|desirable)\b/i;
-const TECHNICAL_MARKERS = /\b(java(script)?|typescript|python|react|node(\.js)?|sql|aws|docker|kubernetes|apis?|database|testing|git|linux|go(lang)?|java|c\+\+|machine learning|data structure|algorithm)\b/i;
+const TECHNICAL_MARKERS = /\b(java(script)?|typescript|python|react|node(\.js)?|fastapi|flask|django|sql|aws|docker|kubernetes|apis?|database|testing|debug(ging)?|git|linux|go(lang)?|java|c\+\+|machine learning|data structure|algorithm)\b/i;
 const BEHAVIOURAL_MARKERS = /\b(communica\w*|collaborat\w*|mentor\w*|ownership|stakeholder\w*|leadership|team\w*|customer\w*|problem.?solv\w*)\b/i;
+const REQUIREMENT_QUALIFIERS = /\b(experience|proficien|familiar|knowledge|understanding|ability|expertise|hands-on|strong|solid|degree|qualification)\b/i;
+const RESPONSIBILITY_OPENERS = /^(you will|responsible for|in this role|what you('|’)ll do|your responsibilities)/i;
 
 function normalizedLines(jd) {
   return String(jd)
     .split(/\r?\n/)
-    .map((line) => line.replace(/^[\s•*\-\d.)]+/, "").trim())
+    .map((line) => line.replace(/^(?:\s*[•*\-]\s*|\s*\d+[.)]\s+)/, "").trim())
     .filter((line) => line.length >= 3);
 }
 
@@ -25,6 +27,28 @@ function requirementParts(line) {
   const tagged = text.match(/^(?:minimum |preferred |basic )?(?:requirements?|qualifications?|skills?)?\s*(required|must have|must-have|essential|need to have|nice to have|nice-to-have|preferred|bonus|plus|good to have|desirable)\s*[:\-]\s*(.+)$/i);
   if (!tagged) return [text];
   return splitRequirementList(tagged[2]);
+}
+
+function sectionPriority(line) {
+  const heading = line.replace(/[:.]+$/, '').trim();
+  if (/^(nice to have|preferred qualifications?|preferred skills?|bonus|good to have|desirable)$/i.test(heading)) return 'nice';
+  if (/^(requirements?|required skills?|required qualifications?|qualifications?|minimum qualifications?|skills?|what you('|’)ll need|what we('|’)re looking for|who you are|eligibility)$/i.test(heading)) return 'must';
+  return null;
+}
+
+function inferPriority(line, inheritedPriority) {
+  if (NICE_MARKERS.test(line)) return 'nice';
+  if (MUST_MARKERS.test(line) || inheritedPriority === 'must') return 'must';
+  if (inheritedPriority === 'nice') return 'nice';
+  // In an unlabelled JD, concrete technical skills and explicit capability language
+  // are treated as expected qualifications rather than guessed nice-to-haves.
+  return 'must';
+}
+
+function isRequirementLike(line, inheritedPriority) {
+  if (MUST_MARKERS.test(line) || NICE_MARKERS.test(line) || inheritedPriority) return !RESPONSIBILITY_OPENERS.test(line) || REQUIREMENT_QUALIFIERS.test(line);
+  return (TECHNICAL_MARKERS.test(line) || BEHAVIOURAL_MARKERS.test(line))
+    && (!RESPONSIBILITY_OPENERS.test(line) || REQUIREMENT_QUALIFIERS.test(line));
 }
 
 function requirementKind(text) {
@@ -48,15 +72,24 @@ export function extractResponsibilities(jd) {
 export function extractRequirements(jd) {
   const lines = String(jd)
     .split(/\r?\n|(?<=[.!?])\s+/)
-    .map((line) => line.replace(/^[\s•*\-\d.)]+/, "").trim())
-    .filter((line) => line.length >= 8);
+    .map((line) => line.replace(/^(?:\s*[•*\-]\s*|\s*\d+[.)]\s+)/, '').trim())
+    .filter(Boolean);
+  let inheritedPriority = null;
+  const candidates = [];
 
-  const candidates = lines
-    .filter((line) => MUST_MARKERS.test(line) || NICE_MARKERS.test(line) || TECHNICAL_MARKERS.test(line))
-    .flatMap((line) => requirementParts(line).map((text) => ({
-      text,
-      priority: NICE_MARKERS.test(line) && !MUST_MARKERS.test(line) ? 'nice' : 'must'
-    })));
+  for (const line of lines) {
+    const headingPriority = sectionPriority(line);
+    if (headingPriority) {
+      inheritedPriority = headingPriority;
+      continue;
+    }
+    if (line.length < 3 || !isRequirementLike(line, inheritedPriority)) continue;
+    const explicitList = MUST_MARKERS.test(line) || NICE_MARKERS.test(line);
+    const parts = explicitList || inheritedPriority ? requirementParts(line).flatMap((text) => splitRequirementList(text)) : [line];
+    for (const text of parts) {
+      if (text.length >= 2) candidates.push({ text, priority: inferPriority(line, inheritedPriority) });
+    }
+  }
   const unique = [...new Map(candidates.map((candidate) => [candidate.text.toLowerCase(), candidate])).values()];
 
   return unique.slice(0, 16).map(({ text, priority }, index) => ({
@@ -65,6 +98,16 @@ export function extractRequirements(jd) {
     kind: requirementKind(text),
     priority
   }));
+}
+
+export function inferSeniority(jd, roleTitle = '') {
+  const text = `${roleTitle}\n${jd}`;
+  const years = text.match(/\b(\d+)\s*(?:-|to)?\s*(\d+)?\s*years?\b/i);
+  if (years) return years[2] ? `${years[1]}-${years[2]} years` : `${years[1]}+ years`;
+  if (/\b(fresher|graduate|entry.?level|junior|intern|trainee|0\s*[-–]\s*1)\b/i.test(text)) return 'Entry-level';
+  if (/\b(senior|staff|principal|lead)\b/i.test(text)) return 'Senior-level';
+  if (/\b(mid.?level|intermediate)\b/i.test(text)) return 'Mid-level';
+  return 'Not specified';
 }
 
 export function questionFor(requirement, index) {
@@ -91,11 +134,16 @@ export function allocateSchedule(questions, requirements, daysAvailable) {
   if (!Number.isInteger(daysAvailable) || daysAvailable < 1 || daysAvailable > 60) {
     throw new Error("days must be an integer between 1 and 60");
   }
+  const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]));
   const priority = new Map(requirements.map((requirement) => [requirement.id, requirement.priority === "must" ? 0 : 1]));
   const ordered = [...questions].sort((a, b) => {
     const aPriority = Math.min(...a.requirement_ids.map((id) => priority.get(id) ?? 1));
     const bPriority = Math.min(...b.requirement_ids.map((id) => priority.get(id) ?? 1));
-    return aPriority - bPriority || b.difficulty - a.difficulty;
+    const requirementDifficulty = (question) => Math.max(...question.requirement_ids.map((id) => {
+      const text = requirementById.get(id)?.text || '';
+      return /\b(advanced|architecture|distributed|scale|performance|ownership|lead)\b/i.test(text) ? 3 : priority.get(id) === 0 ? 2 : 1;
+    }));
+    return aPriority - bPriority || requirementDifficulty(b) - requirementDifficulty(a) || b.difficulty - a.difficulty;
   });
   // Keep the sorted, high-priority work contiguous so it is scheduled earlier.
   const baseSize = Math.floor(ordered.length / daysAvailable);
@@ -107,11 +155,24 @@ export function allocateSchedule(questions, requirements, daysAvailable) {
     offset += size;
     return questionIds;
   });
+  const focusFor = (questionIds, index) => {
+    if (!questionIds.length) return 'Review and recap';
+    const topicNames = [...new Set(questionIds.flatMap((questionId) => {
+      const question = ordered.find((item) => item.id === questionId);
+      return question?.requirement_ids.map((id) => requirementById.get(id)?.text).filter(Boolean) || [];
+    }))].slice(0, 2);
+    const selectedRequirements = questionIds.flatMap((questionId) => {
+      const question = ordered.find((item) => item.id === questionId);
+      return question?.requirement_ids.map((id) => requirementById.get(id)).filter(Boolean) || [];
+    });
+    if (selectedRequirements.length && selectedRequirements.every((requirement) => requirement.kind === 'behavioural')) return `Behavioural evidence: ${topicNames.join(' and ')}`;
+    return `${index === 0 ? 'Core requirements' : 'Focused practice'}: ${topicNames.join(' and ')}`;
+  };
   return {
     days_available: daysAvailable,
     days: buckets.map((questionIds, index) => ({
       day: index + 1,
-      focus: questionIds.length ? (index === 0 ? "Must-have foundations" : "Targeted practice") : "Review and recap",
+      focus: focusFor(questionIds, index),
       question_ids: questionIds,
       minutes: questionIds.length ? Math.max(30, questionIds.length * 25) : 20
     }))
@@ -192,7 +253,7 @@ export function createKit({ id, jd, company_url, days }) {
     },
     role: {
       title: roleTitle,
-      seniority: "Not specified",
+      seniority: inferSeniority(jd, roleTitle),
       responsibilities,
       extraction_note: extractionNote,
       requirements

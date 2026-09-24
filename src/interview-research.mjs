@@ -1,5 +1,6 @@
 const REDDIT_SEARCH_URL = 'https://www.reddit.com/search.json';
 const HACKER_NEWS_SEARCH_URL = 'https://hn.algolia.com/api/v1/search';
+const DUCKDUCKGO_SEARCH_URL = 'https://html.duckduckgo.com/html/';
 const MAX_RESULTS = 3;
 
 function pause(milliseconds) {
@@ -19,6 +20,16 @@ function roleTerms(roleTitle) {
   return [...new Set(normalizeForMatch(roleTitle).split(' ').filter((term) => term.length >= 3 && !ignored.has(term)))];
 }
 
+function roleTermMatches(term, content) {
+  if (content.includes(term)) return true;
+  // These titles describe the same engineering job family in role-specific search
+  // results; keep the equivalence narrow so unrelated roles still stay separate.
+  if (term === 'developer') return content.includes('engineer');
+  if (term === 'engineer') return content.includes('developer');
+  if (term === 'fullstack') return content.includes('full stack');
+  return false;
+}
+
 function buildSearchPlans(companyName, roleTitle) {
   const role = cleanSnippet(roleTitle);
   return [
@@ -35,7 +46,7 @@ function roleRelevance(source, companyName, roleTitle, scope) {
 
   const terms = roleTerms(roleTitle);
   if (!terms.length) return 'company-wide';
-  const matchedTerms = terms.filter((term) => content.includes(term));
+  const matchedTerms = terms.filter((term) => roleTermMatches(term, content));
   if (matchedTerms.length === terms.length) return 'exact-role';
   if (matchedTerms.length > 0) return 'related-role';
   return null;
@@ -44,6 +55,25 @@ function roleRelevance(source, companyName, roleTitle, scope) {
 function withRelevance(source, companyName, roleTitle, scope) {
   const relevance = roleRelevance(source, companyName, roleTitle, scope);
   return relevance ? { ...source, role_relevance: relevance } : null;
+}
+
+function decodeHtml(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function unwrapSearchRedirect(value) {
+  const href = decodeHtml(value);
+  try {
+    const redirect = new URL(href, 'https://duckduckgo.com');
+    return redirect.searchParams.get('uddg') || redirect.toString();
+  } catch {
+    return href;
+  }
 }
 
 export function companyNameFromUrl(companyUrl) {
@@ -59,6 +89,10 @@ export async function searchInterviewDiscussions(companyName, { roleTitle = '', 
   let lastError;
 
   for (const [planIndex, plan] of plans.entries()) {
+    const web = await searchPublicWebDiscussion(companyName, roleTitle, plan, { fetcher, retries });
+    if (web.sources.length) return web;
+    lastError = web.error || lastError;
+
     const reddit = await searchRedditDiscussion(companyName, roleTitle, plan, { fetcher, retries });
     if (reddit.sources.length) return reddit;
     lastError = reddit.error || lastError;
@@ -75,6 +109,44 @@ export async function searchInterviewDiscussions(companyName, { roleTitle = '', 
     error: lastError || 'No citable public interview discussion was found.',
     provider: 'public-interview-search'
   };
+}
+
+async function searchPublicWebDiscussion(companyName, roleTitle, plan, { fetcher, retries }) {
+  const url = new URL(DUCKDUCKGO_SEARCH_URL);
+  url.searchParams.set('q', plan.query);
+  let lastError;
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    try {
+      const response = await fetcher(url, {
+        headers: { 'user-agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8_000)
+      });
+      if (!response.ok) throw new Error(`Public interview web search returned HTTP ${response.status}`);
+      const html = await response.text();
+      const resultPattern = /<a\b([^>]*\bclass="[^"]*\bresult__a\b[^"]*"[^>]*)>([\s\S]*?)<\/a>/gi;
+      const sources = [];
+      for (const match of html.matchAll(resultPattern)) {
+        const title = cleanSnippet(decodeHtml(match[2]));
+        const href = match[1].match(/\bhref="([^"]+)"/i)?.[1];
+        if (!href) continue;
+        const source = withRelevance({
+          url: unwrapSearchRedirect(href),
+          title,
+          snippet: title,
+          retrieved_at: new Date().toISOString(),
+          source_type: 'public-interview-search-result'
+        }, companyName, roleTitle, plan.scope);
+        if (source && /interview|hiring|recruit/i.test(source.title)) sources.push(source);
+        if (sources.length === MAX_RESULTS) break;
+      }
+      return { sources, error: sources.length ? null : 'No citable public web interview discussion was found.', provider: 'public-web-interview-search' };
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries - 1) await pause(300 * (2 ** attempt));
+    }
+  }
+  return { sources: [], error: lastError?.message || 'Public interview web search failed', provider: 'public-web-interview-search' };
 }
 
 async function searchRedditDiscussion(companyName, roleTitle, plan, { fetcher, retries }) {

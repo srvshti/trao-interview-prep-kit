@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allocateSchedule, createKit, extractRequirements, extractRoleTitle, findCoverageGaps, validateKit } from "../src/core.mjs";
+import { allocateSchedule, createKit, extractRequirements, extractRoleTitle, findCoverageGaps, inferSeniority, validateKit } from "../src/core.mjs";
 
 test("every must-have requirement receives a question", () => {
   const kit = createKit({
@@ -64,6 +64,40 @@ test('splits explicitly listed requirements into individually traceable items', 
     ['AWS', 'technical', 'nice'],
     ['Docker', 'technical', 'nice']
   ]);
+});
+
+test('infers expected requirements from an unlabelled qualifications section', () => {
+  const requirements = extractRequirements(`Backend Engineer
+What we're looking for
+Strong experience with Python and FastAPI
+Comfortable debugging production issues and collaborating with product partners
+Preferred qualifications
+Familiarity with Docker and AWS`);
+  assert.deepEqual(requirements.map(({ text, priority, kind }) => [text, priority, kind]), [
+    ['Strong experience with Python', 'must', 'technical'],
+    ['FastAPI', 'must', 'technical'],
+    ['Comfortable debugging production issues', 'must', 'technical'],
+    ['collaborating with product partners', 'must', 'behavioural'],
+    ['Familiarity with Docker', 'nice', 'technical'],
+    ['AWS', 'nice', 'technical']
+  ]);
+});
+
+test('infers seniority from a range or entry-level language', () => {
+  assert.equal(inferSeniority('Experience: 2-4 years', 'Software Engineer'), '2-4 years');
+  assert.equal(inferSeniority('Recent graduates are welcome', 'AI Engineer Intern'), 'Entry-level');
+});
+
+test('schedule names the topics and exposes every scheduled question', () => {
+  const schedule = allocateSchedule([
+    { id: 'q1', requirement_ids: ['r1'], difficulty: 2 },
+    { id: 'q2', requirement_ids: ['r2'], difficulty: 2 }
+  ], [
+    { id: 'r1', text: 'Python', priority: 'must', kind: 'technical' },
+    { id: 'r2', text: 'Communication', priority: 'must', kind: 'behavioural' }
+  ], 2);
+  assert.match(schedule.days[0].focus, /Python/);
+  assert.match(schedule.days[1].focus, /Communication/);
 });
 
 test("keeps a two-line stub honest instead of inventing requirements", () => {

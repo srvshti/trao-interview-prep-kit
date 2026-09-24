@@ -6,6 +6,19 @@ function jsonResponse(body, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
 
+test('Supabase adapter explains a missing service-role table grant', async () => {
+  const store = createSupabaseStore({
+    url: 'https://project.supabase.co',
+    serviceRoleKey: 'server-only-key',
+    fetchImpl: async () => jsonResponse({ message: 'permission denied for table app_users' }, 403)
+  });
+
+  await assert.rejects(
+    () => store.createUser({ email: 'candidate@example.com', password: 'correct-horse' }),
+    /Run the grants in db\/supabase-schema\.sql/
+  );
+});
+
 test('Supabase adapter creates a user without returning credential material', async () => {
   const calls = [];
   const store = createSupabaseStore({

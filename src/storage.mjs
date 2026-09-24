@@ -167,6 +167,27 @@ export function createSupabaseStore({ url, serviceRoleKey, fetchImpl = fetch }) 
   if (!url || !serviceRoleKey) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for persistent storage');
   const apiBase = `${url.replace(/\/$/, '')}/rest/v1`;
 
+  async function persistentStorageError(response, table) {
+    let providerMessage = '';
+    try {
+      const payload = await response.json();
+      providerMessage = String(payload?.message || payload?.hint || '').slice(0, 180);
+    } catch {
+      // A non-JSON error response is still handled through its HTTP status below.
+    }
+
+    if (response.status === 401) {
+      return new Error('Persistent storage authentication failed. Check SUPABASE_URL and the server-only SUPABASE_SERVICE_ROLE_KEY.');
+    }
+    if (response.status === 403) {
+      return new Error(`Persistent storage access was denied for ${table}. Run the grants in db/supabase-schema.sql for the service_role key.`);
+    }
+    if (response.status === 404) {
+      return new Error(`Persistent storage table ${table} was not found. Run db/supabase-schema.sql in the Supabase SQL Editor.`);
+    }
+    return new Error(`Persistent storage request failed (${response.status})${providerMessage ? `: ${providerMessage}` : ''}`);
+  }
+
   async function request(table, { method = 'GET', query, body, prefer = 'return=representation' } = {}) {
     const response = await fetchImpl(`${apiBase}/${table}${queryString(query)}`, {
       method,
@@ -178,7 +199,7 @@ export function createSupabaseStore({ url, serviceRoleKey, fetchImpl = fetch }) 
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
-    if (!response.ok) throw new Error('Persistent storage request failed');
+    if (!response.ok) throw await persistentStorageError(response, table);
     if (response.status === 204) return [];
     return response.json();
   }

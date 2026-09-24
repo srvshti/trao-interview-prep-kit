@@ -21,6 +21,22 @@ test('records a role-specific public discussion citation separately from company
   assert.match(result.sources[0].url, /reddit\.com\/r\/jobs/);
 });
 
+test('uses a role-specific public web result before broader company discussion', async () => {
+  const result = await searchInterviewDiscussions('Stripe', {
+    roleTitle: 'Full Stack Developer',
+    fetcher: async (url) => {
+      if (new URL(url).hostname === 'html.duckduckgo.com') {
+        return new Response('<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fstripe-full-stack">Stripe Full Stack Developer Interview Guide</a>', { status: 200 });
+      }
+      throw new Error('A broader source should not be needed after an exact role result.');
+    },
+    retries: 1
+  });
+  assert.equal(result.provider, 'public-web-interview-search');
+  assert.equal(result.sources[0].url, 'https://example.com/stripe-full-stack');
+  assert.equal(result.sources[0].role_relevance, 'exact-role');
+});
+
 test('uses the parsed role title before trying company-wide interview discussion', async () => {
   const requestedQueries = [];
   const result = await searchInterviewDiscussions('Acme', {
@@ -38,6 +54,8 @@ test('uses the parsed role title before trying company-wide interview discussion
   assert.deepEqual(requestedQueries, [
     'Acme Data Analyst interview',
     'Acme Data Analyst interview',
+    'Acme Data Analyst interview',
+    'Acme interview experience',
     'Acme interview experience',
     'Acme interview experience'
   ]);

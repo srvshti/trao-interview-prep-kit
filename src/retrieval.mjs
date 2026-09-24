@@ -17,16 +17,22 @@ function isPrivateIpv6(address) {
   return normalized === '::1' || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:');
 }
 
+export function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&(nbsp|amp|lt|gt|quot|apos);/gi, (_, entity) => ({
+      nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'"
+    })[entity.toLowerCase()]);
+}
+
 function stripHtml(html) {
-  return html
+  return decodeHtmlEntities(html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
+  )
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -95,11 +101,19 @@ function robotsAllows(text, pathname, userAgent = 'TraoInterviewPrepBot') {
   return !blockedPaths.some((path) => pathname.startsWith(path));
 }
 
-async function fetchWithLimits(url, { timeoutMs = DEFAULT_TIMEOUT_MS, accept = 'text/html,text/plain;q=0.9,*/*;q=0.1' } = {}) {
+async function fetchWithLimits(url, { timeoutMs = DEFAULT_TIMEOUT_MS, accept = 'text/html,text/plain;q=0.9,*/*;q=0.1', allowPrivateNetwork = false, redirectCount = 0 } = {}) {
   const response = await fetch(url, {
     headers: { 'user-agent': 'TraoInterviewPrepBot/0.1 (educational assessment)', accept },
-    redirect: 'error', signal: AbortSignal.timeout(timeoutMs)
+    redirect: 'manual', signal: AbortSignal.timeout(timeoutMs)
   });
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    if (redirectCount >= 3) throw new Error('Too many redirects');
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Redirect response did not include a location');
+    const target = parsePublicHttpUrl(new URL(location, url).toString(), { allowPrivateNetwork });
+    await assertPublicDns(target, { allowPrivateNetwork });
+    return fetchWithLimits(target, { timeoutMs, accept, allowPrivateNetwork, redirectCount: redirectCount + 1 });
+  }
   if (!response.ok) throw new Error(`Upstream returned HTTP ${response.status}`);
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('text/html') && !contentType.includes('text/plain')) {
@@ -109,7 +123,7 @@ async function fetchWithLimits(url, { timeoutMs = DEFAULT_TIMEOUT_MS, accept = '
   if (length > MAX_RESPONSE_BYTES) throw new Error('Response exceeded maximum allowed size');
   const body = await response.arrayBuffer();
   if (body.byteLength > MAX_RESPONSE_BYTES) throw new Error('Response exceeded maximum allowed size');
-  return { contentType, text: new TextDecoder().decode(body) };
+  return { contentType, text: new TextDecoder().decode(body), url: url.toString() };
 }
 
 export async function fetchPublicPage(rawUrl, { allowPrivateNetwork = false, ...fetchOptions } = {}) {
@@ -117,22 +131,22 @@ export async function fetchPublicPage(rawUrl, { allowPrivateNetwork = false, ...
   await assertPublicDns(url, { allowPrivateNetwork });
   const robotsUrl = new URL('/robots.txt', url.origin);
   try {
-    const robots = await fetchWithLimits(robotsUrl, { ...fetchOptions, accept: 'text/plain,*/*;q=0.1' });
+    const robots = await fetchWithLimits(robotsUrl, { ...fetchOptions, allowPrivateNetwork, accept: 'text/plain,*/*;q=0.1' });
     if (!robotsAllows(robots.text, url.pathname)) throw new Error('This path is disallowed by robots.txt');
   } catch (error) {
     if (error.message === 'This path is disallowed by robots.txt') throw error;
   }
 
-  const page = await fetchWithLimits(url, fetchOptions);
+  const page = await fetchWithLimits(url, { ...fetchOptions, allowPrivateNetwork });
   const title = extractAttribute(page.text, /<title[^>]*>([\s\S]*?)<\/title>/i);
   const description = extractAttribute(page.text, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["'][^>]*>/i)
     || extractAttribute(page.text, /<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["'][^>]*>/i);
   return {
-    url: url.toString(),
+    url: page.url,
     title: title ? stripHtml(title) : null,
-    description,
+    description: description ? stripHtml(description) : null,
     text: stripHtml(page.text).slice(0, 60_000),
-    links: extractLinks(page.text, url),
+    links: extractLinks(page.text, page.url),
     retrievedAt: new Date().toISOString()
   };
 }

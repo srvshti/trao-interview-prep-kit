@@ -51,6 +51,19 @@ function parseBatchCases(text, fileName) {
   return normalized;
 }
 
+function normalizeLegacyKit(kit) {
+  const replacements = new Map((kit?.role?.requirements || [])
+    .filter((requirement) => /^\+\s*years\s+/i.test(requirement.text || ''))
+    .map((requirement) => [requirement.text, requirement.text.replace(/^\+\s*years\s+/i, 'Experience ')]));
+  if (!replacements.size) return kit;
+  const replaceLegacyText = (value) => [...replacements.entries()].reduce((text, [from, to]) => text.replaceAll(from, to), String(value || ''));
+  return {
+    ...kit,
+    role: { ...kit.role, requirements: kit.role.requirements.map((requirement) => ({ ...requirement, text: replacements.get(requirement.text) || requirement.text })) },
+    questions: kit.questions.map((question) => ({ ...question, prompt: replaceLegacyText(question.prompt), answer_outline: replaceLegacyText(question.answer_outline) }))
+  };
+}
+
 function Requirement({ requirement }) {
   return (
     <li className="border-b border-slate-100 py-3 last:border-0">
@@ -136,6 +149,7 @@ export default function HomePage() {
   const [editedQuestionIds, setEditedQuestionIds] = useState([]);
   const [regeneratingQuestions, setRegeneratingQuestions] = useState(false);
   const [regeneratingSchedule, setRegeneratingSchedule] = useState(false);
+  const [regeneratingFlashcards, setRegeneratingFlashcards] = useState(false);
   const [questionRevision, setQuestionRevision] = useState(0);
   const [selectedQuestionCategory, setSelectedQuestionCategory] = useState('technical');
   const [generationProgress, setGenerationProgress] = useState([]);
@@ -154,6 +168,10 @@ export default function HomePage() {
   const activePracticeCard = practiceQueue[practiceIndex % Math.max(practiceQueue.length, 1)] || null;
   const weakSpots = useMemo(() => kit ? deriveWeakSpots(kit.flashcards, scores) : [], [kit, scores]);
   const skippedResearchSources = kit?.research_audit?.fetch_errors || [];
+  const scheduleQuestions = useMemo(() => new Map((kit?.questions || []).map((question) => [question.id, question])), [kit]);
+  const scheduleRequirements = useMemo(() => new Map((kit?.role.requirements || []).map((requirement) => [requirement.id, requirement])), [kit]);
+  const mustRequirements = useMemo(() => (kit?.role.requirements || []).filter((requirement) => requirement.priority === 'must'), [kit]);
+  const repairedRequirements = useMemo(() => new Set(kit?.coverage?.repaired_requirement_ids || []), [kit]);
 
   const regenerableCategories = useMemo(() => {
     if (!kit) return [];
@@ -171,14 +189,23 @@ export default function HomePage() {
   }, [regenerableCategories, selectedQuestionCategory]);
 
   async function refreshAccount() {
-    const response = await fetch('/api/auth/me');
-    const data = await response.json();
-    setAccount(data.user);
-    if (data.user) {
+    try {
+      const response = await fetch('/api/auth/me');
+      const body = await response.text();
+      if (!response.ok || !body.trim()) throw new Error('Session check was unavailable');
+      const data = JSON.parse(body);
+      setAccount(data.user || null);
+      if (!data.user) {
+        setSavedKits([]);
+        return;
+      }
       const kitsResponse = await fetch('/api/kits');
-      const kitsData = await kitsResponse.json();
-      if (kitsResponse.ok) setSavedKits(kitsData.kits);
-    } else {
+      const kitsBody = await kitsResponse.text();
+      const kitsData = kitsBody.trim() ? JSON.parse(kitsBody) : null;
+      setSavedKits(kitsResponse.ok && Array.isArray(kitsData?.kits) ? kitsData.kits : []);
+    } catch {
+      // A local server restart or expired session must not prevent anonymous kit creation.
+      setAccount(null);
       setSavedKits([]);
     }
   }
@@ -223,7 +250,7 @@ export default function HomePage() {
       const response = await fetch('/api/kits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not build preparation kit');
-      setKit({ ...data.kit, editor_state: { pinned_question_ids: [], edited_question_ids: [] } });
+      setKit({ ...normalizeLegacyKit(data.kit), editor_state: { pinned_question_ids: [], edited_question_ids: [] } });
       setSavedId(data.savedId);
       setPinnedQuestionIds([]);
       setEditedQuestionIds([]);
@@ -262,7 +289,7 @@ export default function HomePage() {
         const response = await fetch('/api/kits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item) });
         const data = await response.json();
         results.push(response.ok
-          ? { id: item.id, status: 'ready', kit: { ...data.kit, editor_state: { pinned_question_ids: [], edited_question_ids: [] } }, savedId: data.savedId }
+          ? { id: item.id, status: 'ready', kit: { ...normalizeLegacyKit(data.kit), editor_state: { pinned_question_ids: [], edited_question_ids: [] } }, savedId: data.savedId }
           : { id: item.id, status: 'failed', error: data.error || 'Could not build this kit' });
         setBatchResults([...results]);
       }
@@ -386,22 +413,58 @@ export default function HomePage() {
 
   async function regenerateSchedule() {
     if (!kit) return;
+    const days = Number(form.days);
+    if (!Number.isInteger(days) || days < 1 || days > 60) {
+      setError('Choose a whole number from 1 to 60 days before regenerating the schedule.');
+      return;
+    }
     setRegeneratingSchedule(true);
     setError('');
     try {
       const response = await fetch('/api/schedule/regenerate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ questions: kit.questions, requirements: kit.role.requirements, days: kit.schedule.days_available })
+        body: JSON.stringify({ questions: kit.questions, requirements: kit.role.requirements, days })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Schedule could not be regenerated');
+      const unchanged = JSON.stringify(kit.schedule) === JSON.stringify(data.schedule);
       setKit((current) => ({ ...current, schedule: data.schedule }));
-      setStatus('Schedule regenerated from the current questions and available days. Your brief, questions, and flashcards were preserved.');
+      setStatus(unchanged
+        ? 'Schedule recalculated. The questions and available days are unchanged, so the deterministic plan correctly stayed the same.'
+        : `Schedule regenerated for ${days} day${days === 1 ? '' : 's'}. Your brief, questions, and flashcards were preserved.`);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setRegeneratingSchedule(false);
+    }
+  }
+
+  async function regenerateFlashcards() {
+    if (!kit) return;
+    setRegeneratingFlashcards(true);
+    setError('');
+    try {
+      const response = await fetch('/api/flashcards/regenerate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requirements: kit.role.requirements })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Flashcards could not be regenerated');
+      setKit((current) => ({
+        ...current,
+        flashcards: [...data.flashcards, ...current.flashcards.filter((card) => card.id.startsWith('custom-card-'))]
+      }));
+      setScores({});
+      setCoveredCardIds([]);
+      setRevealedCardIds([]);
+      setPracticeIndex(0);
+      setStatus('Prepared flashcards regenerated from the current requirements. Custom cards were preserved; confidence ratings reset because the card content changed.');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setRegeneratingFlashcards(false);
     }
   }
 
@@ -498,7 +561,7 @@ export default function HomePage() {
           {status && <p className="status mb-0 mt-4 text-sm font-semibold text-mint" role="status">{status}</p>}
           {error && <p className="error mb-0 mt-4 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
           {batchResults.length > 0 && <ul className="mb-0 mt-3 grid list-none gap-2 p-0" aria-label="Batch generation results">{batchResults.map((result) => <li key={result.id} className={`border px-3 py-2 text-sm ${result.status === 'ready' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'}`}>{result.id}: {result.status === 'ready' ? 'ready' : result.error}</li>)}</ul>}
-          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds(saved.kit.editor_state?.pinned_question_ids || []); setEditedQuestionIds(saved.kit.editor_state?.edited_question_ids || []); setScores(saved.kit.practice_state?.confidence_by_flashcard_id || {}); setCoveredCardIds(saved.kit.practice_state?.covered_flashcard_ids || []); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
+          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { const savedKit = normalizeLegacyKit(saved.kit); setKit(savedKit); setSavedId(saved.id); setPinnedQuestionIds(savedKit.editor_state?.pinned_question_ids || []); setEditedQuestionIds(savedKit.editor_state?.edited_question_ids || []); setScores(savedKit.practice_state?.confidence_by_flashcard_id || {}); setCoveredCardIds(savedKit.practice_state?.covered_flashcard_ids || []); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
         </section>
 
         <section aria-live="polite">
@@ -523,6 +586,12 @@ export default function HomePage() {
                     </button>
                   </div>
                 </div>
+                <div className="mt-4 border-l-4 border-emerald-500 bg-emerald-50 px-3 py-3 text-sm text-emerald-950" aria-label="Coverage audit">
+                  <p className="m-0 font-bold">Coverage audit · {kit.coverage.passes} deterministic passes</p>
+                  <p className="mb-0 mt-1 leading-6">Pass 1 compares every must-have requirement ID against question requirement IDs. Pass 2 generates repair questions only for missing must-have IDs, then compares again.</p>
+                  <p className="mb-0 mt-1 leading-6">{mustRequirements.length} must-have requirement{mustRequirements.length === 1 ? '' : 's'} checked; {repairedRequirements.size} repaired; {kit.coverage.uncovered_requirement_ids.length} still uncovered.</p>
+                  {repairedRequirements.size > 0 && <ul className="mb-0 mt-2 list-disc pl-5 leading-6">{mustRequirements.filter((requirement) => repairedRequirements.has(requirement.id)).map((requirement) => <li key={requirement.id}>{requirement.id}: {requirement.text}</li>)}</ul>}
+                </div>
                 <label className="mt-4 block text-xs font-bold uppercase text-slate-500">Company brief<textarea aria-label="Company brief summary" value={kit.company_brief.summary} onChange={(event) => updateBrief({ summary: event.target.value })} className="mt-2 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
                 <label className="mt-3 block text-xs font-bold uppercase text-slate-500">What they do<textarea aria-label="What the company does" value={kit.company_brief.what_they_do} onChange={(event) => updateBrief({ what_they_do: event.target.value })} className="mt-2 min-h-16 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
                 {sourceUrl(kit.company_brief.sources?.[0]) && <a className="mt-3 inline-block text-sm font-semibold text-mint underline" href={sourceUrl(kit.company_brief.sources[0])} target="_blank" rel="noreferrer">Source: {sourceUrl(kit.company_brief.sources[0])}</a>}
@@ -539,11 +608,17 @@ export default function HomePage() {
                 </section>
                 <section className="panel border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="m-0 text-lg font-bold text-ink">Practice schedule</h2><button type="button" onClick={regenerateSchedule} disabled={regeneratingSchedule} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingSchedule ? 'Regenerating...' : 'Regenerate schedule'}</button></div>
+                  <p className="mb-0 mt-2 text-xs leading-5 text-slate-500">This is recalculated deterministically. It changes when the questions, their priorities, or the available days change.</p>
                   <ol className="schedule-list m-0 mt-3 grid list-none gap-3 p-0">
                     {kit.schedule.days.map((day) => (
                       <li key={day.day} className="border-l-4 border-coral bg-orange-50 px-3 py-3">
                         <p className="m-0 text-sm font-bold text-ink">Day {day.day}: {day.focus}</p>
-                        <p className="mb-0 mt-1 text-sm text-slate-600">{day.question_ids.length ? `${day.question_ids.join(', ')} · ` : ''}{day.minutes} minutes</p>
+                        <p className="mb-0 mt-1 text-sm text-slate-600">{day.minutes} minutes · {day.question_ids.length} prompt{day.question_ids.length === 1 ? '' : 's'}</p>
+                        {day.question_ids.length > 0 && <ul className="mb-0 mt-3 grid list-none gap-2 p-0">{day.question_ids.map((questionId) => {
+                          const question = scheduleQuestions.get(questionId);
+                          const requirementNames = question?.requirement_ids.map((id) => scheduleRequirements.get(id)?.text).filter(Boolean).join(' · ');
+                          return <li key={questionId} className="border-t border-orange-100 pt-2 text-sm leading-5 text-slate-700"><span className="font-bold text-ink">{questionId}</span>{requirementNames ? ` · ${requirementNames}` : ''}{question?.prompt && <p className="mb-0 mt-1 text-slate-600">{question.prompt}</p>}</li>;
+                        })}</ul>}
                       </li>
                     ))}
                   </ol>
@@ -560,7 +635,7 @@ export default function HomePage() {
 
               <section>
                 <div className="mb-3 flex items-end justify-between gap-4">
-                  <div><h2 className="m-0 text-lg font-bold text-ink">Practice cards</h2><p className="mb-0 mt-1 text-sm text-slate-600">Reveal the answer, rate your confidence, then the next weak or uncovered card comes forward.</p></div>
+                  <div><h2 className="m-0 text-lg font-bold text-ink">Practice cards</h2><p className="mb-0 mt-1 text-sm text-slate-600">Each card is linked to one requirement ID. Reveal the cue, then rate 1 = need work, 2 = partial, or 3 = confident. Rating marks it covered; the next session prioritizes uncovered cards, then lowest confidence.</p></div>
                   <span className="text-sm font-semibold text-slate-500">{coveredCardIds.length}/{kit.flashcards.length} covered</span>
                 </div>
                 {activePracticeCard && <Flashcard card={activePracticeCard} score={scores[activePracticeCard.id]} revealed={revealedCardIds.includes(activePracticeCard.id)} onReveal={revealCard} onScore={scoreCard} onNext={advancePractice} />}
@@ -572,7 +647,7 @@ export default function HomePage() {
               </section>
 
               <section>
-                <div className="section-header mb-3 flex flex-wrap items-end justify-between gap-3"><div><h2 className="m-0 text-lg font-bold text-ink">Flashcard editor</h2><p className="mb-0 mt-1 text-sm text-slate-600">Edit, add, or remove the cues used in practice mode.</p></div><button type="button" onClick={addFlashcard} className="link-button text-sm font-bold text-mint underline">Add flashcard</button></div>
+                <div className="section-header mb-3 flex flex-wrap items-end justify-between gap-3"><div><h2 className="m-0 text-lg font-bold text-ink">Flashcard editor</h2><p className="mb-0 mt-1 text-sm text-slate-600">Prepared cards are generated from requirements. Edit them for personal examples, or add your own.</p></div><div className="flex flex-wrap gap-3"><button type="button" onClick={regenerateFlashcards} disabled={regeneratingFlashcards} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingFlashcards ? 'Regenerating...' : 'Regenerate flashcards'}</button><button type="button" onClick={addFlashcard} className="link-button text-sm font-bold text-mint underline">Add flashcard</button></div></div>
                 <div className="question-list grid gap-3">{kit.flashcards.map((card) => <FlashcardEditor key={card.id} card={card} onChange={(patch) => updateFlashcard(card.id, patch)} onDelete={() => setKit((current) => ({ ...current, flashcards: current.flashcards.filter((item) => item.id !== card.id) }))} />)}</div>
               </section>
             </div>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateQuestions, generateQuestionsForCategory, repairCoverage } from '../src/generation.mjs';
+import { generateFlashcards, generateQuestions, generateQuestionsForCategory, repairCoverage } from '../src/generation.mjs';
 import { selectRelevantLinks } from '../src/research.mjs';
 
 test('uses research context while generating a technical question', () => {
@@ -12,12 +12,30 @@ test('uses research context while generating a technical question', () => {
   assert.deepEqual(question.evidence, ['https://example.com/about']);
 });
 
-test('uses public interview-process context without treating it as company fact', () => {
+test('uses role-relevant interview evidence without treating it as company fact', () => {
   const [question] = generateQuestions([{ id: 'r1', text: 'Build reliable APIs', kind: 'technical', priority: 'must' }], {
-    interview_process: { summary: 'Community reports mention a system-design exercise.' },
+    interview_process: {
+      summary: 'Role-specific candidate reports mention a system-design exercise.',
+      sources: [{ role_relevance: 'exact-role', snippet: 'System design exercise.' }]
+    },
     sources: []
   });
-  assert.match(question.prompt, /publicly discussed interview process/i);
+  assert.match(question.prompt, /candidate reports relevant to this role/i);
+  assert.match(question.prompt, /not present it as verified company policy/i);
+});
+
+test('adds format-specific practice when company research reports a take-home and system-design round', () => {
+  const questions = generateQuestions([{ id: 'r1', text: 'Design Node.js REST APIs', kind: 'technical', priority: 'must' }], {
+    interview_process: {
+      summary: 'A company-published page mentions a take-home assignment followed by a system-design round.',
+      sources: [{ url: 'https://example.com/interview-process' }]
+    },
+    sources: []
+  });
+  const formatQuestions = questions.filter((question) => question.id.startsWith('q-format-'));
+  assert.deepEqual(formatQuestions.map((question) => question.id), ['q-format-take-home', 'q-format-system-design']);
+  assert.ok(formatQuestions.every((question) => question.difficulty === 3));
+  assert.ok(formatQuestions.every((question) => question.requirement_ids.includes('r1')));
 });
 
 test('uses a distinct prompt template for a later regeneration revision', () => {
@@ -43,6 +61,15 @@ test('adds a second-pass question for a missing must-have requirement', () => {
   const result = repairCoverage([{ id: 'r1', text: 'SQL', kind: 'technical', priority: 'must' }], []);
   assert.equal(result.questions.length, 1);
   assert.deepEqual(result.repaired_requirement_ids, ['r1']);
+});
+
+test('creates concrete flashcards for Node.js and SQL requirements', () => {
+  const cards = generateFlashcards([
+    { id: 'r1', text: 'Node.js', kind: 'technical', priority: 'must' },
+    { id: 'r2', text: 'SQL', kind: 'technical', priority: 'must' }
+  ]);
+  assert.match(cards[0].front, /production-ready create endpoint/i);
+  assert.match(cards[1].front, /prevent duplicate/i);
 });
 
 test('selects only high-signal same-origin research links', () => {
