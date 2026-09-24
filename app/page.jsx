@@ -528,15 +528,20 @@ export default function HomePage() {
                 <button type="button" onClick={signOut} className="link-button text-sm font-bold text-mint underline">Sign out</button>
               </div>
             ) : (
-              <div className="grid gap-3">
+              <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); submitAuth('login'); }}>
                 <p className="m-0 text-xs font-bold uppercase text-slate-500">Sign in to save private kits</p>
-                <input type="email" value={credentials.email} onChange={(event) => setCredentials({ ...credentials, email: event.target.value })} className="h-9 border border-slate-300 px-3 text-sm" placeholder="Email address" aria-label="Email address" />
-                <input type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} className="h-9 border border-slate-300 px-3 text-sm" placeholder="Password (8+ characters)" aria-label="Password" />
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">Email address
+                  <input required type="email" value={credentials.email} onChange={(event) => setCredentials({ ...credentials, email: event.target.value })} className="h-9 border border-slate-300 px-3 text-sm" placeholder="you@example.com" aria-label="Email address" autoComplete="email" />
+                </label>
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">Password
+                  <input required minLength="8" type="password" value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} className="h-9 border border-slate-300 px-3 text-sm" placeholder="At least 8 characters" aria-label="Password" autoComplete="current-password" />
+                </label>
                 <div className="account-actions flex gap-3">
-                  <button type="button" disabled={authLoading} onClick={() => submitAuth('login')} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">Sign in</button>
+                  <button type="submit" disabled={authLoading} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">Sign in</button>
                   <button type="button" disabled={authLoading} onClick={() => submitAuth('register')} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">Create account</button>
                 </div>
-              </div>
+                <p className="m-0 text-xs text-slate-500">First visit? Enter a valid email and an 8-character password, then choose Create account. Later, use Sign in.</p>
+              </form>
             )}
           </div>
           <form className="builder-form grid gap-4" onSubmit={createPrepKit}>
