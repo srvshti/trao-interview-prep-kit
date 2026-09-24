@@ -3,25 +3,28 @@ const DEBUGGING_MARKERS = /\b(debug|troubleshoot|reliab|incident|monitor|test|qu
 
 function questionPrompt(requirement, companyBrief, variation = 0) {
   const context = companyBrief?.what_they_do ? ' Tie the answer to the company context supplied in the research evidence.' : '';
+  const interviewContext = companyBrief?.interview_process?.summary && companyBrief.interview_process.summary !== 'No public interview discussion was retrieved.'
+    ? ' Account for the publicly discussed interview process when choosing what to emphasize.'
+    : '';
   const template = variation % 3;
   if (requirement.kind === 'behavioural') {
-    if (template === 1) return `Describe a difficult situation where you demonstrated ${requirement.text}. Explain your decision-making, the outcome, and what you would improve.${context}`;
-    if (template === 2) return `How would a teammate describe your approach to ${requirement.text}? Support your answer with one specific STAR example.${context}`;
-    return `Tell me about a specific time you demonstrated ${requirement.text}. Use a concise STAR answer and name the measurable outcome.${context}`;
+    if (template === 1) return `Describe a difficult situation where you demonstrated ${requirement.text}. Explain your decision-making, the outcome, and what you would improve.${context}${interviewContext}`;
+    if (template === 2) return `How would a teammate describe your approach to ${requirement.text}? Support your answer with one specific STAR example.${context}${interviewContext}`;
+    return `Tell me about a specific time you demonstrated ${requirement.text}. Use a concise STAR answer and name the measurable outcome.${context}${interviewContext}`;
   }
   if (DEBUGGING_MARKERS.test(requirement.text)) {
-    if (template === 1) return `A production issue affects ${requirement.text}. Walk through your triage order, the evidence you would collect, and the safe fix you would ship.${context}`;
-    if (template === 2) return `What failure modes would you anticipate around ${requirement.text}, and how would you detect, diagnose, and prevent them?${context}`;
-    return `Describe how you would investigate and resolve a failure related to: ${requirement.text}.${context}`;
+    if (template === 1) return `A production issue affects ${requirement.text}. Walk through your triage order, the evidence you would collect, and the safe fix you would ship.${context}${interviewContext}`;
+    if (template === 2) return `What failure modes would you anticipate around ${requirement.text}, and how would you detect, diagnose, and prevent them?${context}${interviewContext}`;
+    return `Describe how you would investigate and resolve a failure related to: ${requirement.text}.${context}${interviewContext}`;
   }
   if (SYSTEM_DESIGN_MARKERS.test(requirement.text)) {
-    if (template === 1) return `Design an approach for ${requirement.text}. Start with the smallest viable version, then explain how you would evolve it for reliability and scale.${context}`;
-    if (template === 2) return `What trade-offs would you make when designing for ${requirement.text}? Explain your chosen design, the alternative you rejected, and how you would test it.${context}`;
-    return `How would you design a reliable solution for: ${requirement.text}? Explain assumptions, trade-offs, and how you would validate it.${context}`;
+    if (template === 1) return `Design an approach for ${requirement.text}. Start with the smallest viable version, then explain how you would evolve it for reliability and scale.${context}${interviewContext}`;
+    if (template === 2) return `What trade-offs would you make when designing for ${requirement.text}? Explain your chosen design, the alternative you rejected, and how you would test it.${context}${interviewContext}`;
+    return `How would you design a reliable solution for: ${requirement.text}? Explain assumptions, trade-offs, and how you would validate it.${context}${interviewContext}`;
   }
-  if (template === 1) return `Walk through how you have used, or would use, ${requirement.text} to deliver a feature. Explain the implementation choices and how you would verify the result.${context}`;
-  if (template === 2) return `An interviewer challenges your understanding of ${requirement.text}. What would you explain first, what example would you use, and which trade-off matters most?${context}`;
-  return `How would you apply or explain ${requirement.text} in this role? Ground the answer in one concrete example or trade-off.${context}`;
+  if (template === 1) return `Walk through how you have used, or would use, ${requirement.text} to deliver a feature. Explain the implementation choices and how you would verify the result.${context}${interviewContext}`;
+  if (template === 2) return `An interviewer challenges your understanding of ${requirement.text}. What would you explain first, what example would you use, and which trade-off matters most?${context}${interviewContext}`;
+  return `How would you apply or explain ${requirement.text} in this role? Ground the answer in one concrete example or trade-off.${context}${interviewContext}`;
 }
 
 export function generateQuestions(requirements, companyBrief, { variation = 0 } = {}) {

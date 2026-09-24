@@ -12,6 +12,14 @@ test('uses research context while generating a technical question', () => {
   assert.deepEqual(question.evidence, ['https://example.com/about']);
 });
 
+test('uses public interview-process context without treating it as company fact', () => {
+  const [question] = generateQuestions([{ id: 'r1', text: 'Build reliable APIs', kind: 'technical', priority: 'must' }], {
+    interview_process: { summary: 'Community reports mention a system-design exercise.' },
+    sources: []
+  });
+  assert.match(question.prompt, /publicly discussed interview process/i);
+});
+
 test('uses a distinct prompt template for a later regeneration revision', () => {
   const requirements = [{ id: 'r1', text: 'TypeScript and REST APIs', kind: 'technical', priority: 'must' }];
   const initial = generateQuestions(requirements, null)[0];
