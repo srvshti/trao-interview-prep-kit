@@ -1,5 +1,9 @@
 const REDDIT_SEARCH_URL = 'https://www.reddit.com/search.json';
 const MAX_RESULTS = 3;
+const SEARCH_QUERIES = (companyName) => [
+  `${companyName} interview experience`,
+  `${companyName} software engineer interview`
+];
 
 function pause(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -16,37 +20,41 @@ export function companyNameFromUrl(companyUrl) {
 
 // Community posts are useful interview signals, but never verified company facts.
 export async function searchInterviewDiscussions(companyName, { fetcher = fetch, retries = 2 } = {}) {
-  const url = new URL(REDDIT_SEARCH_URL);
-  url.searchParams.set('q', `${companyName} interview experience`);
-  url.searchParams.set('limit', String(MAX_RESULTS));
-  url.searchParams.set('sort', 'relevance');
-  url.searchParams.set('t', 'all');
-
   let lastError;
-  for (let attempt = 0; attempt < retries; attempt += 1) {
-    try {
-      const response = await fetcher(url, {
-        headers: { 'user-agent': 'TraoInterviewPrepBot/0.1 (educational assessment)' },
-        signal: AbortSignal.timeout(8_000)
-      });
-      if (!response.ok) throw new Error(`Interview discussion search returned HTTP ${response.status}`);
-      const payload = await response.json();
-      const sources = (payload?.data?.children || [])
-        .map((child) => child?.data)
-        .filter((post) => post?.title && post?.permalink)
-        .map((post) => ({
-          url: `https://www.reddit.com${post.permalink}`,
-          title: cleanSnippet(post.title),
-          snippet: cleanSnippet(post.selftext || post.title),
-          retrieved_at: new Date().toISOString(),
-          source_type: 'public-interview-discussion'
-        }))
-        .slice(0, MAX_RESULTS);
-      return { sources, error: null, provider: 'reddit-public-search' };
-    } catch (error) {
-      lastError = error;
-      if (attempt < retries - 1) await pause(300 * (2 ** attempt));
+  for (const [queryIndex, query] of SEARCH_QUERIES(companyName).entries()) {
+    const url = new URL(REDDIT_SEARCH_URL);
+    url.searchParams.set('q', query);
+    url.searchParams.set('limit', String(MAX_RESULTS));
+    url.searchParams.set('sort', 'relevance');
+    url.searchParams.set('t', 'all');
+
+    for (let attempt = 0; attempt < retries; attempt += 1) {
+      try {
+        const response = await fetcher(url, {
+          headers: { 'user-agent': 'TraoInterviewPrepBot/0.1 (educational assessment)' },
+          signal: AbortSignal.timeout(8_000)
+        });
+        if (!response.ok) throw new Error(`Interview discussion search returned HTTP ${response.status}`);
+        const payload = await response.json();
+        const sources = (payload?.data?.children || [])
+          .map((child) => child?.data)
+          .filter((post) => post?.title && post?.permalink)
+          .map((post) => ({
+            url: `https://www.reddit.com${post.permalink}`,
+            title: cleanSnippet(post.title),
+            snippet: cleanSnippet(post.selftext || post.title),
+            retrieved_at: new Date().toISOString(),
+            source_type: 'public-interview-discussion'
+          }))
+          .slice(0, MAX_RESULTS);
+        if (sources.length) return { sources, error: null, provider: 'reddit-public-search' };
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries - 1) await pause(300 * (2 ** attempt));
+      }
     }
+    if (queryIndex < SEARCH_QUERIES(companyName).length - 1) await pause(250);
   }
   return { sources: [], error: lastError?.message || 'Interview discussion search failed', provider: 'reddit-public-search' };
 }
