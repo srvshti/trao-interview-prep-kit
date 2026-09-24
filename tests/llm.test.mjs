@@ -27,3 +27,24 @@ test('keeps validated LLM questions and falls back when a category response is i
   assert.equal(result.provider, 'gemini');
   assert.match(result.questions[0].prompt, /reliable API/);
 });
+
+test('accepts a list-shaped LLM answer outline and normalizes it for the UI', async () => {
+  const result = await generateQuestionDrafts([
+    { id: 'r1', text: 'Build reliable APIs', kind: 'technical', priority: 'must' }
+  ], null, {
+    configured: true,
+    generator: async () => ({
+      questions: [{
+        id: 'q1',
+        requirement_ids: ['r1'],
+        category: 'technical',
+        difficulty: 2,
+        prompt: 'How would you build a reliable API with clear failure handling?',
+        answer_outline: ['Clarify the contract.', 'Validate requests and monitor failures.']
+      }]
+    })
+  });
+  assert.equal(result.provider, 'gemini');
+  assert.match(result.questions[0].answer_outline, /Clarify the contract/);
+  assert.match(result.questions[0].answer_outline, /monitor failures/);
+});

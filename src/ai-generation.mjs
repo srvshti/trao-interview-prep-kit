@@ -5,13 +5,22 @@ function categoryFor(requirement) {
   return requirement.kind === 'behavioural' ? 'behavioural' : 'technical';
 }
 
+function normalizeOutline(value) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+    return value.map((item) => item.trim()).filter(Boolean).join('\n');
+  }
+  return '';
+}
+
 function validateQuestion(candidate, expected) {
   if (!candidate || candidate.id !== expected.id) return null;
   if (!Array.isArray(candidate.requirement_ids) || candidate.requirement_ids.length !== 1 || candidate.requirement_ids[0] !== expected.requirement_ids[0]) return null;
   if (candidate.category !== expected.category || typeof candidate.prompt !== 'string' || candidate.prompt.trim().length < 12) return null;
-  if (typeof candidate.answer_outline !== 'string' || candidate.answer_outline.trim().length < 12) return null;
+  const answerOutline = normalizeOutline(candidate.answer_outline);
+  if (answerOutline.length < 12) return null;
   if (![1, 2, 3].includes(candidate.difficulty)) return null;
-  return { ...expected, prompt: candidate.prompt.trim(), answer_outline: candidate.answer_outline.trim(), difficulty: candidate.difficulty };
+  return { ...expected, prompt: candidate.prompt.trim(), answer_outline: answerOutline, difficulty: candidate.difficulty };
 }
 
 function questionPrompt(expectedQuestions, companyBrief, category) {
