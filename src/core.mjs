@@ -149,13 +149,22 @@ export function allocateSchedule(questions, requirements, daysAvailable) {
   const baseSize = Math.floor(ordered.length / daysAvailable);
   const remainder = ordered.length % daysAvailable;
   let offset = 0;
-  const buckets = Array.from({ length: daysAvailable }, (_, index) => {
+  const initialBuckets = Array.from({ length: daysAvailable }, (_, index) => {
     const size = baseSize + (index < remainder ? 1 : 0);
     const questionIds = ordered.slice(offset, offset + size).map((question) => question.id);
     offset += size;
     return questionIds;
   });
-  const focusFor = (questionIds, index) => {
+  const reviewCandidates = ordered.filter((question) => question.requirement_ids.some((id) => priority.get(id) === 0));
+  const reviewQueue = reviewCandidates.length ? reviewCandidates : ordered;
+  let reviewCursor = 0;
+  const buckets = initialBuckets.map((questionIds) => {
+    if (questionIds.length || !reviewQueue.length) return { questionIds, review: false };
+    const reviewQuestion = reviewQueue[reviewCursor % reviewQueue.length];
+    reviewCursor += 1;
+    return { questionIds: [reviewQuestion.id], review: true };
+  });
+  const focusFor = (questionIds, index, review) => {
     if (!questionIds.length) return 'Review and recap';
     const topicNames = [...new Set(questionIds.flatMap((questionId) => {
       const question = ordered.find((item) => item.id === questionId);
@@ -165,14 +174,15 @@ export function allocateSchedule(questions, requirements, daysAvailable) {
       const question = ordered.find((item) => item.id === questionId);
       return question?.requirement_ids.map((id) => requirementById.get(id)).filter(Boolean) || [];
     });
+    if (review) return `Review and recall: ${topicNames.join(' and ')}`;
     if (selectedRequirements.length && selectedRequirements.every((requirement) => requirement.kind === 'behavioural')) return `Behavioural evidence: ${topicNames.join(' and ')}`;
     return `${index === 0 ? 'Core requirements' : 'Focused practice'}: ${topicNames.join(' and ')}`;
   };
   return {
     days_available: daysAvailable,
-    days: buckets.map((questionIds, index) => ({
+    days: buckets.map(({ questionIds, review }, index) => ({
       day: index + 1,
-      focus: focusFor(questionIds, index),
+      focus: focusFor(questionIds, index, review),
       question_ids: questionIds,
       minutes: questionIds.length ? Math.max(30, questionIds.length * 25) : 20
     }))

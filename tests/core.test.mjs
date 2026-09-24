@@ -19,6 +19,16 @@ test("schedule uses exactly the requested number of days", () => {
   assert.ok(schedule.days.every((day) => Number.isInteger(day.minutes)));
 });
 
+test('schedules a must-have recall session when days exceed unique questions', () => {
+  const schedule = allocateSchedule(
+    [{ id: 'q1', requirement_ids: ['r1'], difficulty: 2 }],
+    [{ id: 'r1', text: 'TypeScript', kind: 'technical', priority: 'must' }],
+    4
+  );
+  assert.ok(schedule.days.every((day) => day.question_ids.length === 1));
+  assert.match(schedule.days[1].focus, /Review and recall/);
+});
+
 test("schedules must-have and harder questions before nice-to-have questions", () => {
   const schedule = allocateSchedule([
     { id: "q1", requirement_ids: ["r1"], difficulty: 1 },
