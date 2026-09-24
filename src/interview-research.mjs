@@ -79,6 +79,7 @@ async function searchHackerNewsInterviewDiscussions(companyName, { fetcher, retr
       const response = await fetcher(url, { signal: AbortSignal.timeout(8_000) });
       if (!response.ok) throw new Error(`Hacker News search returned HTTP ${response.status}`);
       const payload = await response.json();
+      const normalizedCompany = companyName.toLowerCase();
       const sources = (payload?.hits || [])
         .filter((hit) => hit?.title || hit?.story_title)
         .map((hit) => ({
@@ -88,7 +89,8 @@ async function searchHackerNewsInterviewDiscussions(companyName, { fetcher, retr
           retrieved_at: new Date().toISOString(),
           source_type: 'public-interview-discussion'
         }))
-        .filter((source) => /interview|hiring|recruit/i.test(`${source.title} ${source.snippet}`))
+        .filter((source) => /interview|hiring|recruit/i.test(`${source.title} ${source.snippet}`)
+          && `${source.title} ${source.url}`.toLowerCase().includes(normalizedCompany))
         .slice(0, MAX_RESULTS);
       if (sources.length) return { sources, error: null, provider: 'hacker-news-public-search' };
       return { sources: [], error: 'No citable Hacker News interview discussion was found.', provider: 'hacker-news-public-search' };
