@@ -130,6 +130,7 @@ export default function HomePage() {
   const [pinnedQuestionIds, setPinnedQuestionIds] = useState([]);
   const [editedQuestionIds, setEditedQuestionIds] = useState([]);
   const [regeneratingQuestions, setRegeneratingQuestions] = useState(false);
+  const [regeneratingSchedule, setRegeneratingSchedule] = useState(false);
   const [questionRevision, setQuestionRevision] = useState(0);
   const [selectedQuestionCategory, setSelectedQuestionCategory] = useState('technical');
   const [generationProgress, setGenerationProgress] = useState([]);
@@ -371,6 +372,27 @@ export default function HomePage() {
     }
   }
 
+  async function regenerateSchedule() {
+    if (!kit) return;
+    setRegeneratingSchedule(true);
+    setError('');
+    try {
+      const response = await fetch('/api/schedule/regenerate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ questions: kit.questions, requirements: kit.role.requirements, days: kit.schedule.days_available })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Schedule could not be regenerated');
+      setKit((current) => ({ ...current, schedule: data.schedule }));
+      setStatus('Schedule regenerated from the current questions and available days. Your brief, questions, and flashcards were preserved.');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setRegeneratingSchedule(false);
+    }
+  }
+
   async function saveChanges() {
     if (!account || !savedId || !kit) {
       setError('Sign in and create a kit before saving edits.');
@@ -496,7 +518,7 @@ export default function HomePage() {
                   <ul className="requirements-list m-0 mt-3 list-none p-0">{kit.role.requirements.map((requirement) => <Requirement key={requirement.id} requirement={requirement} />)}</ul>
                 </section>
                 <section className="panel border border-slate-200 bg-white p-5 shadow-sm">
-                  <h2 className="m-0 text-lg font-bold text-ink">Practice schedule</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="m-0 text-lg font-bold text-ink">Practice schedule</h2><button type="button" onClick={regenerateSchedule} disabled={regeneratingSchedule} className="link-button text-sm font-bold text-mint underline disabled:opacity-50">{regeneratingSchedule ? 'Regenerating...' : 'Regenerate schedule'}</button></div>
                   <ol className="schedule-list m-0 mt-3 grid list-none gap-3 p-0">
                     {kit.schedule.days.map((day) => (
                       <li key={day.day} className="border-l-4 border-coral bg-orange-50 px-3 py-3">

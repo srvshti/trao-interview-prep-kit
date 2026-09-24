@@ -14,7 +14,7 @@ The preferred stack is Next.js/Tailwind, Node/Express, and MongoDB. This impleme
 - Builds a cited company brief, requirement-linked technical and behavioural prompts, flashcards, and an exact daily schedule.
 - Performs a second coverage pass so every must-have requirement has a question and a scheduled practice slot.
 - Lets a signed-in user save private kits; questions and flashcards can be edited, reordered, added, deleted, and pinned.
-- Supports single-category question regeneration while preserving pinned, edited, and custom prompts.
+- Supports isolated company-brief, question-category, and schedule regeneration without replacing unrelated kit sections.
 - Runs a one-card practice loop: reveal an answer, rate confidence, and revisit weak or uncovered cards first.
 - Provides the required batch evaluator, returning one result per case even when retrieval for a case fails.
 - Accepts a JSON or CSV file of role cases in the browser and builds each role independently, reporting per-case success or failure.
@@ -42,6 +42,12 @@ Browser UI
 The deterministic generator is always available and is the fallback if Gemini is not configured or gives an invalid result. With `GEMINI_API_KEY` set, `src/ai-generation.mjs` requests schema-shaped technical and behavioural prompt drafts, validates every result against existing requirement IDs, and retains deterministic coverage repair as the final correctness guard.
 
 The model adapter is deliberately isolated in `src/llm.mjs`, with timeout and transient-error retry handling. Retrieved page text is treated as untrusted context in prompts.
+
+### Coverage and editor state
+
+Generation uses two deliberate passes. Pass one drafts requirement-linked questions. The deterministic coverage check then identifies every uncovered `must` requirement; pass two adds a bounded deterministic repair question for each gap and runs the same check again. Two passes are sufficient because the repair does not ask the model to interpret a gap: it creates one question directly from each missing requirement. `validateKit` rejects a kit that still has any uncovered must-have requirement, so an incomplete kit cannot be returned.
+
+The builder stores `pinned_question_ids` and `edited_question_ids` in `editor_state`; user-created questions use a `custom-` ID. During a category refresh, edited, pinned, custom, and other-category questions remain untouched. Company-brief and schedule refreshes replace only their own section, leaving all question and flashcard edits intact.
 
 ## Local setup
 

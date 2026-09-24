@@ -86,6 +86,8 @@ export function validateKit(kit) {
   const errors = [];
   const requirementIds = new Set(kit.role.requirements.map((requirement) => requirement.id));
   const questionIds = new Set(kit.questions.map((question) => question.id));
+  const uncovered = findCoverageGaps(kit.role.requirements, kit.questions);
+  if (uncovered.length) errors.push(`uncovered must-have requirements: ${uncovered.join(', ')}`);
   if (kit.schedule.days.length !== kit.schedule.days_available) errors.push("schedule day count does not match days_available");
   for (const question of kit.questions) {
     if (!question.requirement_ids.every((id) => requirementIds.has(id))) errors.push(`question ${question.id} references an unknown requirement`);

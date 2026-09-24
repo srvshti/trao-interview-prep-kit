@@ -24,6 +24,12 @@ test("coverage identifies an uncovered must-have requirement", () => {
   assert.deepEqual(gaps, ["r1"]);
 });
 
+test("kit validation rejects uncovered must-have requirements", () => {
+  const kit = createKit({ id: "test", jd: "Backend Engineer\nRequired: TypeScript", company_url: "https://example.com", days: 1 });
+  kit.questions = [];
+  assert.match(validateKit(kit).join("; "), /uncovered must-have requirements/);
+});
+
 test("generated kit matches the required structural references", () => {
   const kit = createKit({ id: "case-1", jd: "Must have Python.", company_url: "https://example.com", days: 1 });
   assert.deepEqual(validateKit(kit), []);
