@@ -68,7 +68,7 @@ export function generateQuestions(requirements, companyBrief, { variation = 0 } 
     id: `q${index + 1}`,
     requirement_ids: [requirement.id],
     category: requirement.kind === 'behavioural' ? 'behavioural' : 'technical',
-    prompt: questionPrompt(requirement, companyBrief, variation),
+    prompt: `${questionPrompt(requirement, companyBrief, variation)}${variation > 0 ? ` Use a different concrete example from earlier attempts for revision ${variation}.` : ''}`,
     answer_outline: requirement.kind === 'behavioural'
       ? 'Situation, task, actions you personally took, result, and what you learned.'
       : 'Clarify assumptions, describe the approach, call out the trade-off, then explain validation and monitoring.',

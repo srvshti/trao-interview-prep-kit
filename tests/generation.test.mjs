@@ -42,7 +42,9 @@ test('uses a distinct prompt template for a later regeneration revision', () => 
   const requirements = [{ id: 'r1', text: 'TypeScript and REST APIs', kind: 'technical', priority: 'must' }];
   const initial = generateQuestions(requirements, null)[0];
   const regenerated = generateQuestions(requirements, null, { variation: 1 })[0];
+  const laterRegeneration = generateQuestions(requirements, null, { variation: 4 })[0];
   assert.notEqual(regenerated.prompt, initial.prompt);
+  assert.notEqual(laterRegeneration.prompt, regenerated.prompt);
   assert.equal(regenerated.id, initial.id);
 });
 
