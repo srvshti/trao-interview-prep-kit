@@ -15,9 +15,10 @@ test('stores an account, authenticates it, and keeps kits private to that user',
     assert.equal(verified.id, firstUser.id);
     const session = await localStore.createSession(firstUser.id);
     assert.equal((await localStore.getSessionUser(session.token)).email, 'first@example.com');
-    await localStore.saveKit(firstUser.id, { role: { title: 'Backend Engineer' } });
+    await localStore.saveKit(firstUser.id, { source: { request_fingerprint: 'request-1' }, role: { title: 'Backend Engineer' } });
     assert.equal((await localStore.listKits(firstUser.id)).length, 1);
     assert.equal((await localStore.listKits(secondUser.id)).length, 0);
+    assert.equal((await localStore.findKitByFingerprint(firstUser.id, 'request-1')).kit.role.title, 'Backend Engineer');
     const [savedKit] = await localStore.listKits(firstUser.id);
     await localStore.updateKit(firstUser.id, savedKit.id, { role: { title: 'Updated Backend Engineer' } });
     assert.equal((await localStore.listKits(firstUser.id))[0].kit.role.title, 'Updated Backend Engineer');

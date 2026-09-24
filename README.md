@@ -43,6 +43,21 @@ The deterministic generator is always available and is the fallback if Gemini is
 
 The model adapter is deliberately isolated in `src/llm.mjs`, with timeout and transient-error retry handling. Retrieved page text is treated as untrusted context in prompts.
 
+### Edge cases and failure handling
+
+- Invalid, private, 404, unsupported-content, and timed-out company URLs return a structured error or an honest job-description-only brief; the kit never invents company facts.
+- When a site exposes no relevant links, the root page is the only company source. When public interview discussion has no results, the brief says so and contains no fabricated process claim.
+- A two-line or otherwise thin job description produces a thin kit with an explicit notice instead of guessed requirements.
+- Gemini JSON is parsed and validated against the existing stable requirement IDs. Invalid or incomplete category output falls back to deterministic prompts; transient provider failures and rate limits use bounded exponential retry.
+- A submission fingerprint normalizes the description, company URL, and days. The API coalesces duplicate in-flight requests for five minutes, and signed-in users reopen a previously saved kit with the same fingerprint instead of running research again.
+- `days` is constrained to integer values from 1 through 60. The schedule allocator has explicit tests for both priority ordering and exact day counts.
+
+### Security and interaction boundaries
+
+Only public HTTP(S) URLs without embedded credentials are accepted in production. DNS resolution rejects loopback and private-network targets; retrieval enforces robots rules, redirects are denied, HTML/text content types are allowlisted, and response size plus fetch time are bounded. Page and public-discussion text is stripped to text and treated as untrusted data; prompts explicitly instruct the model not to follow instructions from retrieved content.
+
+The browser keeps edits locally for immediate keyboard-friendly changes. Build, research, schedule refresh, and category refresh show pending or failure feedback, while the build action is disabled during an active request to prevent accidental double submits.
+
 ### Coverage and editor state
 
 Generation uses two deliberate passes. Pass one drafts requirement-linked questions. The deterministic coverage check then identifies every uncovered `must` requirement; pass two adds a bounded deterministic repair question for each gap and runs the same check again. Two passes are sufficient because the repair does not ask the model to interpret a gap: it creates one question directly from each missing requirement. `validateKit` rejects a kit that still has any uncovered must-have requirement, so an incomplete kit cannot be returned.

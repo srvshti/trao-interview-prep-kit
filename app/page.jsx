@@ -134,6 +134,7 @@ export default function HomePage() {
   const [questionRevision, setQuestionRevision] = useState(0);
   const [selectedQuestionCategory, setSelectedQuestionCategory] = useState('technical');
   const [generationProgress, setGenerationProgress] = useState([]);
+  const [buildingKit, setBuildingKit] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchResults, setBatchResults] = useState([]);
 
@@ -202,6 +203,8 @@ export default function HomePage() {
 
   async function createPrepKit(event) {
     event.preventDefault();
+    if (buildingKit) return;
+    setBuildingKit(true);
     setStatus('Building your kit...');
     setGenerationProgress([
       { label: 'Validating role details', state: 'done' },
@@ -232,6 +235,8 @@ export default function HomePage() {
       setStatus('');
       setGenerationProgress((current) => current.map((step) => step.state === 'active' ? { ...step, state: 'failed' } : step));
       setError(requestError.message);
+    } finally {
+      setBuildingKit(false);
     }
   }
 
@@ -471,7 +476,7 @@ export default function HomePage() {
               Job description
               <textarea required value={form.jd} onChange={(event) => setForm({ ...form, jd: event.target.value })} className="min-h-72 resize-y border border-slate-300 p-3 text-sm leading-6" />
             </label>
-            <button type="submit" className="primary-button h-11 bg-mint px-4 text-sm font-bold text-white hover:bg-emerald-800">Create prep kit</button>
+            <button type="submit" disabled={buildingKit} className="primary-button h-11 bg-mint px-4 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">{buildingKit ? 'Generating kit...' : 'Create prep kit'}</button>
           </form>
           <div className="mt-5 border-t border-slate-200 pt-4">
             <label className="block text-sm font-semibold text-slate-700">Build several roles from a file
@@ -515,6 +520,7 @@ export default function HomePage() {
               <div className="two-column grid gap-6 xl:grid-cols-2">
                 <section className="panel border border-slate-200 bg-white p-5 shadow-sm">
                   <h2 className="m-0 text-lg font-bold text-ink">Requirements</h2>
+                  {kit.role.extraction_note && <p className="mt-3 border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950">{kit.role.extraction_note}</p>}
                   <ul className="requirements-list m-0 mt-3 list-none p-0">{kit.role.requirements.map((requirement) => <Requirement key={requirement.id} requirement={requirement} />)}</ul>
                 </section>
                 <section className="panel border border-slate-200 bg-white p-5 shadow-sm">

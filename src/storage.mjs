@@ -130,6 +130,12 @@ export function createFileStore(filePath) {
         .map(({ id, kit, created_at, updated_at }) => ({ id, kit, created_at, updated_at })));
     },
 
+    async findKitByFingerprint(userId, fingerprint) {
+      return read((state) => state.kits
+        .filter((item) => item.user_id === userId && item.kit?.source?.request_fingerprint === fingerprint)
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] || null);
+    },
+
     async updateKit(userId, kitId, kit) {
       return update((state) => {
         const record = state.kits.find((item) => item.id === kitId && item.user_id === userId);
@@ -243,6 +249,13 @@ export function createSupabaseStore({ url, serviceRoleKey, fetchImpl = fetch }) 
       return request('interview_kits', {
         query: { select: 'id,kit,created_at,updated_at', user_id: `eq.${userId}`, order: 'updated_at.desc' }
       });
+    },
+
+    async findKitByFingerprint(userId, fingerprint) {
+      const kits = await request('interview_kits', {
+        query: { select: 'id,kit,created_at,updated_at', user_id: `eq.${userId}`, order: 'updated_at.desc' }
+      });
+      return kits.find((item) => item.kit?.source?.request_fingerprint === fingerprint) || null;
     },
 
     async updateKit(userId, kitId, kit) {

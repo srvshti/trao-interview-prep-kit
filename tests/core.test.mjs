@@ -52,3 +52,9 @@ test("generated kit matches the required structural references", () => {
 test("extracts a role title from the first meaningful JD line", () => {
   assert.equal(extractRoleTitle("Backend Engineer\n\nRequired: Node.js and SQL."), "Backend Engineer");
 });
+
+test("keeps a two-line stub honest instead of inventing requirements", () => {
+  const kit = createKit({ id: "thin", jd: "Engineering opening\nApply now", company_url: "https://example.com", days: 1 });
+  assert.equal(kit.role.requirements.length, 0);
+  assert.match(kit.role.extraction_note, /intentionally a thin kit/i);
+});

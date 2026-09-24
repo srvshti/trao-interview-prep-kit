@@ -124,6 +124,9 @@ export function createKit({ id, jd, company_url, days }) {
   const requirements = extractRequirements(jd);
   const roleTitle = extractRoleTitle(jd);
   const responsibilities = extractResponsibilities(jd);
+  const extractionNote = requirements.length === 0
+    ? 'This description contained very little extractable detail, so this is intentionally a thin kit. Add a fuller posting for more targeted practice.'
+    : null;
   const firstPassQuestions = generateQuestions(requirements, null);
   const coverageRepair = repairCoverage(requirements, firstPassQuestions);
   const questions = coverageRepair.questions;
@@ -147,6 +150,7 @@ export function createKit({ id, jd, company_url, days }) {
       title: roleTitle,
       seniority: "Not specified",
       responsibilities,
+      extraction_note: extractionNote,
       requirements
     },
     questions,
