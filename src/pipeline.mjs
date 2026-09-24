@@ -21,7 +21,12 @@ function normalizeCompanyBrief(brief) {
     ...brief,
     summary: brief?.summary?.trim() || 'No company summary was found on the supplied pages.',
     what_they_do: brief?.what_they_do?.trim() || 'No verified company context was retrieved.',
-    sources: Array.isArray(brief?.sources) ? brief.sources : []
+    sources: Array.isArray(brief?.sources) ? brief.sources : [],
+    interview_process: {
+      ...brief?.interview_process,
+      summary: brief?.interview_process?.summary?.trim() || 'No public interview discussion was retrieved.',
+      sources: Array.isArray(brief?.interview_process?.sources) ? brief.interview_process.sources : []
+    }
   };
 }
 

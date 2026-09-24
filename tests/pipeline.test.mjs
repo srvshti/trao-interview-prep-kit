@@ -36,10 +36,12 @@ test('keeps the company brief explicit when retrieval returns no usable prose', 
       companyBrief: {
         summary: 'No company summary was found on the supplied pages.',
         what_they_do: '',
+        interview_process: { summary: '   ', sources: [] },
         sources: []
       },
       audit: { pages_requested: 1, pages_retrieved: 1, fetch_errors: [], provider: 'test' }
     })
   });
   assert.equal(kit.company_brief.what_they_do, 'No verified company context was retrieved.');
+  assert.equal(kit.company_brief.interview_process.summary, 'No public interview discussion was retrieved.');
 });

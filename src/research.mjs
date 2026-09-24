@@ -79,7 +79,7 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
       provider: 'public-interview-search'
     };
   }
-  const interviewSummary = interviewResearch.sources.map((source) => source.snippet).filter(Boolean).join(' ').slice(0, 900);
+  const interviewSummary = interviewResearch.sources.map((source) => source.snippet).filter(Boolean).join(' ').trim().slice(0, 900);
   const sourceRecords = [
     ...pages.map((page) => ({ url: page.url, title: page.title, retrieved_at: page.retrievedAt, source_type: 'company-site' })),
     ...interviewResearch.sources
