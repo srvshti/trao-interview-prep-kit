@@ -34,3 +34,22 @@ test('tries a role-specific public query when the broad query has no results', a
   assert.deepEqual(requestedQueries, ['Acme interview experience', 'Acme software engineer interview']);
   assert.equal(result.sources.length, 1);
 });
+
+test('falls back to a citable Hacker News discussion when Reddit rejects the request', async () => {
+  const result = await searchInterviewDiscussions('Stripe', {
+    fetcher: async (url) => {
+      if (new URL(url).hostname === 'www.reddit.com') return new Response('blocked', { status: 403 });
+      return new Response(JSON.stringify({
+        hits: [{
+          objectID: '123',
+          title: 'Stripe Interview for Software Engineer',
+          url: 'https://example.com/stripe-interview',
+          story_text: 'A candidate described the Stripe engineering interview process.'
+        }]
+      }), { status: 200 });
+    },
+    retries: 1
+  });
+  assert.equal(result.provider, 'hacker-news-public-search');
+  assert.equal(result.sources[0].url, 'https://example.com/stripe-interview');
+});
