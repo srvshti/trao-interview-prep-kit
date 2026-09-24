@@ -153,6 +153,7 @@ export default function HomePage() {
   }, [kit, scores, coveredCardIds]);
   const activePracticeCard = practiceQueue[practiceIndex % Math.max(practiceQueue.length, 1)] || null;
   const weakSpots = useMemo(() => kit ? deriveWeakSpots(kit.flashcards, scores) : [], [kit, scores]);
+  const skippedResearchSources = kit?.research_audit?.fetch_errors || [];
 
   const regenerableCategories = useMemo(() => {
     if (!kit) return [];
@@ -430,7 +431,7 @@ export default function HomePage() {
       const response = await fetch('/api/research', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ companyUrl: form.companyUrl, requirements: kit.role.requirements, includeQuestions: false }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Company research could not be completed');
-      setKit((current) => ({ ...current, company_brief: data.companyBrief, source: { ...current.source, pages_used: data.companyBrief.sources } }));
+      setKit((current) => ({ ...current, company_brief: data.companyBrief, source: { ...current.source, pages_used: data.companyBrief.sources }, research_audit: data.audit }));
       setStatus(`Company brief refreshed from ${data.audit.pages_retrieved} page${data.audit.pages_retrieved === 1 ? '' : 's'}. Your questions and schedule were left unchanged.`);
     } catch (requestError) {
       setError(requestError.message);
@@ -525,6 +526,7 @@ export default function HomePage() {
                 <label className="mt-4 block text-xs font-bold uppercase text-slate-500">Company brief<textarea aria-label="Company brief summary" value={kit.company_brief.summary} onChange={(event) => updateBrief({ summary: event.target.value })} className="mt-2 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
                 <label className="mt-3 block text-xs font-bold uppercase text-slate-500">What they do<textarea aria-label="What the company does" value={kit.company_brief.what_they_do} onChange={(event) => updateBrief({ what_they_do: event.target.value })} className="mt-2 min-h-16 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
                 {sourceUrl(kit.company_brief.sources?.[0]) && <a className="mt-3 inline-block text-sm font-semibold text-mint underline" href={sourceUrl(kit.company_brief.sources[0])} target="_blank" rel="noreferrer">Source: {sourceUrl(kit.company_brief.sources[0])}</a>}
+                {skippedResearchSources.length > 0 && <details className="mt-4 border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"><summary className="cursor-pointer font-bold">Research notes: {skippedResearchSources.length} source{skippedResearchSources.length === 1 ? '' : 's'} skipped</summary><ul className="mb-0 mt-2 list-disc space-y-1 pl-5 leading-6">{skippedResearchSources.map((item, index) => <li key={`${item.url}-${index}`}><span className="font-semibold">{item.url}:</span> {item.error}</li>)}</ul></details>}
                 {kit.company_brief.interview_process && <div className="mt-4 border-l-4 border-amber-400 bg-amber-50 px-3 py-3"><p className="m-0 text-xs font-bold uppercase tracking-wide text-amber-900">Public interview signals</p><textarea aria-label="Public interview signals" value={kit.company_brief.interview_process.summary} onChange={(event) => updateBrief({ interview_process: { ...kit.company_brief.interview_process, summary: event.target.value } })} className="mt-2 min-h-16 w-full resize-y border border-amber-200 bg-white p-3 text-sm leading-6 text-slate-700" /><p className="mb-0 mt-2 text-xs leading-5 text-amber-950">Community discussion is supplementary and is not treated as verified company policy.</p></div>}
               </div>
 
