@@ -80,6 +80,10 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
     };
   }
   const interviewSummary = interviewResearch.sources.map((source) => source.snippet).filter(Boolean).join(' ').slice(0, 900);
+  const sourceRecords = [
+    ...pages.map((page) => ({ url: page.url, title: page.title, retrieved_at: page.retrievedAt, source_type: 'company-site' })),
+    ...interviewResearch.sources
+  ];
   return {
     companyBrief: {
       summary: summaries[0] || 'No company summary was found on the supplied pages.',
@@ -88,16 +92,15 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
         summary: interviewSummary || 'No public interview discussion was retrieved.',
         sources: interviewResearch.sources
       },
-      sources: [
-        ...pages.map((page) => ({ url: page.url, title: page.title, retrieved_at: page.retrievedAt, source_type: 'company-site' })),
-        ...interviewResearch.sources
-      ]
+      // Appendix A requires source URLs, while source metadata stays in the audit trail.
+      sources: sourceRecords.map((source) => source.url)
     },
     audit: {
       pages_requested: 1 + selected.length,
       pages_retrieved: pages.length,
       fetch_errors: fetchErrors,
       interview_discussion: { provider: interviewResearch.provider, results: interviewResearch.sources.length, error: interviewResearch.error },
+      source_records: sourceRecords,
       provider: 'public-web-retrieval'
     }
   };

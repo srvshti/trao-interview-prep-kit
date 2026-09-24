@@ -8,20 +8,20 @@ function argument(name) {
 
 export async function evaluateCases(cases, { builder = buildKit } = {}) {
   if (!Array.isArray(cases)) throw new Error("input must be a JSON array");
-  const results = [];
+  const kits = [];
   for (const entry of cases) {
     try {
-      results.push({ id: entry.id, status: "ok", kit: await builder(entry, { allowPrivateNetwork: true }), error: null });
+      kits.push({ id: entry.id, status: "ok", kit: await builder(entry, { allowPrivateNetwork: true }), error: null });
     } catch (error) {
-      results.push({
-      id: entry.id,
-      status: "failed",
-      kit: null,
-      error: { code: "KIT_GENERATION_FAILED", message: error instanceof Error ? error.message : "Unknown error" }
+      kits.push({
+        id: entry.id,
+        status: "failed",
+        kit: null,
+        error: { code: "KIT_GENERATION_FAILED", message: error instanceof Error ? error.message : "Unknown error" }
       });
     }
   }
-  return { version: "1.0", generated_at: new Date().toISOString(), results };
+  return { version: "1.0", generated_at: new Date().toISOString(), kits };
 }
 
 if (import.meta.url === new URL(process.argv[1], 'file:').href) {

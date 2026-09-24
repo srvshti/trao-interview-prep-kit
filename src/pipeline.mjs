@@ -12,6 +12,10 @@ function partialResearchBrief(error) {
   };
 }
 
+function sourceUrl(source) {
+  return typeof source === 'string' ? source : source?.url;
+}
+
 export async function buildKit(input, { researcher = researchCompany, allowPrivateNetwork = false } = {}) {
   const draft = createKit(input);
   let companyBrief;
@@ -34,9 +38,12 @@ export async function buildKit(input, { researcher = researchCompany, allowPriva
     source: {
       ...draft.source,
       researched_at: new Date().toISOString(),
-      pages_used: companyBrief.sources.map((source) => source.url)
+      pages_used: (companyBrief.sources || []).map(sourceUrl).filter(Boolean)
     },
-    company_brief: companyBrief,
+    company_brief: {
+      ...companyBrief,
+      sources: (companyBrief.sources || []).map(sourceUrl).filter(Boolean)
+    },
     questions: repaired.questions,
     schedule: allocateSchedule(repaired.questions, draft.role.requirements, Number(input.days)),
     coverage: { uncovered_requirement_ids: uncovered, repaired_requirement_ids: repaired.repaired_requirement_ids, passes: 2 },

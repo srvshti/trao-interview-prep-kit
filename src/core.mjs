@@ -1,13 +1,36 @@
 const MUST_MARKERS = /\b(required|must have|must-have|essential|need to have|you will need|we are looking for)\b/i;
 const NICE_MARKERS = /\b(nice to have|nice-to-have|preferred|bonus|plus|good to have|desirable)\b/i;
-const TECHNICAL_MARKERS = /\b(java(script)?|typescript|python|react|node(\.js)?|sql|aws|docker|kubernetes|api|database|testing|git|linux|go(lang)?|java|c\+\+|machine learning|data structure|algorithm)\b/i;
-const BEHAVIOURAL_MARKERS = /\b(communicat|collaborat|mentor|ownership|stakeholder|leadership|team|customer|problem.solv)\b/i;
+const TECHNICAL_MARKERS = /\b(java(script)?|typescript|python|react|node(\.js)?|sql|aws|docker|kubernetes|apis?|database|testing|git|linux|go(lang)?|java|c\+\+|machine learning|data structure|algorithm)\b/i;
+const BEHAVIOURAL_MARKERS = /\b(communica\w*|collaborat\w*|mentor\w*|ownership|stakeholder\w*|leadership|team\w*|customer\w*|problem.?solv\w*)\b/i;
 
 function normalizedLines(jd) {
   return String(jd)
     .split(/\r?\n/)
     .map((line) => line.replace(/^[\s•*\-\d.)]+/, "").trim())
     .filter((line) => line.length >= 3);
+}
+
+function splitRequirementList(text) {
+  const compact = text.replace(/\s+/g, ' ').trim().replace(/[.;]+$/, '').replace(/,\s*and\s+/i, ', ');
+  if (!compact) return [];
+  if (!/[,&]|\band\b/i.test(compact)) return [compact];
+  return compact
+    .split(/\s*,\s*|\s+and\s+/i)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+}
+
+function requirementParts(line) {
+  const text = line.replace(/\s+/g, ' ').trim();
+  const tagged = text.match(/^(?:minimum |preferred |basic )?(?:requirements?|qualifications?|skills?)?\s*(required|must have|must-have|essential|need to have|nice to have|nice-to-have|preferred|bonus|plus|good to have|desirable)\s*[:\-]\s*(.+)$/i);
+  if (!tagged) return [text];
+  return splitRequirementList(tagged[2]);
+}
+
+function requirementKind(text) {
+  if (BEHAVIOURAL_MARKERS.test(text)) return 'behavioural';
+  if (TECHNICAL_MARKERS.test(text)) return 'technical';
+  return 'domain';
 }
 
 export function extractRoleTitle(jd) {
@@ -28,14 +51,19 @@ export function extractRequirements(jd) {
     .map((line) => line.replace(/^[\s•*\-\d.)]+/, "").trim())
     .filter((line) => line.length >= 8);
 
-  const candidates = lines.filter((line) => MUST_MARKERS.test(line) || NICE_MARKERS.test(line) || TECHNICAL_MARKERS.test(line));
-  const unique = [...new Set(candidates.map((line) => line.replace(/\s+/g, " ").trim()))];
+  const candidates = lines
+    .filter((line) => MUST_MARKERS.test(line) || NICE_MARKERS.test(line) || TECHNICAL_MARKERS.test(line))
+    .flatMap((line) => requirementParts(line).map((text) => ({
+      text,
+      priority: NICE_MARKERS.test(line) && !MUST_MARKERS.test(line) ? 'nice' : 'must'
+    })));
+  const unique = [...new Map(candidates.map((candidate) => [candidate.text.toLowerCase(), candidate])).values()];
 
-  return unique.slice(0, 16).map((text, index) => ({
+  return unique.slice(0, 16).map(({ text, priority }, index) => ({
     id: `r${index + 1}`,
     text,
-    kind: TECHNICAL_MARKERS.test(text) ? "technical" : BEHAVIOURAL_MARKERS.test(text) ? "behavioural" : "domain",
-    priority: NICE_MARKERS.test(text) && !MUST_MARKERS.test(text) ? "nice" : "must"
+    kind: requirementKind(text),
+    priority
   }));
 }
 
@@ -92,6 +120,12 @@ export function allocateSchedule(questions, requirements, daysAvailable) {
 
 export function validateKit(kit) {
   const errors = [];
+  if (!kit?.source || !kit?.company_brief || !kit?.role || !Array.isArray(kit?.questions) || !Array.isArray(kit?.flashcards) || !kit?.schedule || !kit?.coverage) {
+    return ['kit is missing one or more Appendix-A sections'];
+  }
+  if (!Array.isArray(kit.source.pages_used) || !kit.source.pages_used.every((url) => typeof url === 'string')) errors.push('source.pages_used must be an array of URLs');
+  if (!Array.isArray(kit.company_brief.sources) || !kit.company_brief.sources.every((url) => typeof url === 'string')) errors.push('company_brief.sources must be an array of URLs');
+  if (!Array.isArray(kit.role.requirements)) return [...errors, 'role.requirements must be an array'];
   const requirementIds = new Set(kit.role.requirements.map((requirement) => requirement.id));
   const questionIds = new Set(kit.questions.map((question) => question.id));
   const uncovered = findCoverageGaps(kit.role.requirements, kit.questions);
@@ -105,14 +139,24 @@ export function validateKit(kit) {
   if (uncovered.length) errors.push(`uncovered must-have requirements: ${uncovered.join(', ')}`);
   if (unscheduledMust.length) errors.push(`must-have requirements missing from schedule: ${unscheduledMust.join(', ')}`);
   if (kit.schedule.days.length !== kit.schedule.days_available) errors.push("schedule day count does not match days_available");
+  for (const requirement of kit.role.requirements) {
+    if (!/^r\d+$/.test(requirement.id || '')) errors.push('requirement has an invalid stable id');
+    if (!['technical', 'behavioural', 'domain'].includes(requirement.kind)) errors.push(`requirement ${requirement.id} has an invalid kind`);
+    if (!['must', 'nice'].includes(requirement.priority)) errors.push(`requirement ${requirement.id} has an invalid priority`);
+  }
   for (const question of kit.questions) {
     if (!question.requirement_ids.every((id) => requirementIds.has(id))) errors.push(`question ${question.id} references an unknown requirement`);
+    if (!['technical', 'behavioural', 'system-design', 'company-fit'].includes(question.category)) errors.push(`question ${question.id} has invalid category`);
     if (![1, 2, 3].includes(question.difficulty)) errors.push(`question ${question.id} has invalid difficulty`);
   }
+  for (const flashcard of kit.flashcards) {
+    if (!flashcard.requirement_ids.every((id) => requirementIds.has(id))) errors.push(`flashcard ${flashcard.id} references an unknown requirement`);
+  }
   for (const day of kit.schedule.days) {
-    if (!Number.isInteger(day.minutes)) errors.push(`day ${day.day} minutes must be an integer`);
+    if (!Number.isInteger(day.day) || typeof day.focus !== 'string' || !Number.isInteger(day.minutes)) errors.push(`day ${day.day} does not match the schedule structure`);
     if (!day.question_ids.every((id) => questionIds.has(id))) errors.push(`day ${day.day} references an unknown question`);
   }
+  if (!Array.isArray(kit.coverage.uncovered_requirement_ids) || !Number.isInteger(kit.coverage.passes)) errors.push('coverage does not match the required structure');
   return errors;
 }
 

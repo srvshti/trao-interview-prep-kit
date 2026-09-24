@@ -62,6 +62,10 @@ function Requirement({ requirement }) {
   );
 }
 
+function sourceUrl(source) {
+  return typeof source === 'string' ? source : source?.url;
+}
+
 function Flashcard({ card, score, revealed, onReveal, onScore, onNext }) {
   return (
     <article className="flashcard border border-slate-200 bg-white p-5 shadow-sm">
@@ -520,13 +524,15 @@ export default function HomePage() {
                 </div>
                 <label className="mt-4 block text-xs font-bold uppercase text-slate-500">Company brief<textarea aria-label="Company brief summary" value={kit.company_brief.summary} onChange={(event) => updateBrief({ summary: event.target.value })} className="mt-2 min-h-20 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
                 <label className="mt-3 block text-xs font-bold uppercase text-slate-500">What they do<textarea aria-label="What the company does" value={kit.company_brief.what_they_do} onChange={(event) => updateBrief({ what_they_do: event.target.value })} className="mt-2 min-h-16 w-full resize-y border border-slate-300 p-3 text-sm font-normal normal-case leading-6 text-slate-600" /></label>
-                {kit.company_brief.sources?.[0] && <a className="mt-3 inline-block text-sm font-semibold text-mint underline" href={kit.company_brief.sources[0].url} target="_blank" rel="noreferrer">Source: {kit.company_brief.sources[0].title || kit.company_brief.sources[0].url}</a>}
+                {sourceUrl(kit.company_brief.sources?.[0]) && <a className="mt-3 inline-block text-sm font-semibold text-mint underline" href={sourceUrl(kit.company_brief.sources[0])} target="_blank" rel="noreferrer">Source: {sourceUrl(kit.company_brief.sources[0])}</a>}
+                {kit.company_brief.interview_process && <div className="mt-4 border-l-4 border-amber-400 bg-amber-50 px-3 py-3"><p className="m-0 text-xs font-bold uppercase tracking-wide text-amber-900">Public interview signals</p><textarea aria-label="Public interview signals" value={kit.company_brief.interview_process.summary} onChange={(event) => updateBrief({ interview_process: { ...kit.company_brief.interview_process, summary: event.target.value } })} className="mt-2 min-h-16 w-full resize-y border border-amber-200 bg-white p-3 text-sm leading-6 text-slate-700" /><p className="mb-0 mt-2 text-xs leading-5 text-amber-950">Community discussion is supplementary and is not treated as verified company policy.</p></div>}
               </div>
 
               <div className="two-column grid gap-6 xl:grid-cols-2">
                 <section className="panel border border-slate-200 bg-white p-5 shadow-sm">
                   <h2 className="m-0 text-lg font-bold text-ink">Requirements</h2>
                   {kit.role.extraction_note && <p className="mt-3 border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950">{kit.role.extraction_note}</p>}
+                  <div className="mt-3 border-b border-slate-100 pb-3 text-sm leading-6 text-slate-600"><p className="m-0"><span className="font-bold text-ink">Seniority:</span> {kit.role.seniority}</p>{kit.role.responsibilities.length > 0 && <><p className="mb-1 mt-3 font-bold text-ink">Role responsibilities</p><ul className="m-0 list-disc space-y-1 pl-5">{kit.role.responsibilities.map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul></>}</div>
                   <ul className="requirements-list m-0 mt-3 list-none p-0">{kit.role.requirements.map((requirement) => <Requirement key={requirement.id} requirement={requirement} />)}</ul>
                 </section>
                 <section className="panel border border-slate-200 bg-white p-5 shadow-sm">

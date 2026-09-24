@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allocateSchedule, createKit, extractRoleTitle, findCoverageGaps, validateKit } from "../src/core.mjs";
+import { allocateSchedule, createKit, extractRequirements, extractRoleTitle, findCoverageGaps, validateKit } from "../src/core.mjs";
 
 test("every must-have requirement receives a question", () => {
   const kit = createKit({
@@ -51,6 +51,19 @@ test("generated kit matches the required structural references", () => {
 
 test("extracts a role title from the first meaningful JD line", () => {
   assert.equal(extractRoleTitle("Backend Engineer\n\nRequired: Node.js and SQL."), "Backend Engineer");
+});
+
+test('splits explicitly listed requirements into individually traceable items', () => {
+  const requirements = extractRequirements('Required: TypeScript, Node.js, REST APIs, SQL, and strong communication.\nNice to have: AWS and Docker.');
+  assert.deepEqual(requirements.map((requirement) => [requirement.text, requirement.kind, requirement.priority]), [
+    ['TypeScript', 'technical', 'must'],
+    ['Node.js', 'technical', 'must'],
+    ['REST APIs', 'technical', 'must'],
+    ['SQL', 'technical', 'must'],
+    ['strong communication', 'behavioural', 'must'],
+    ['AWS', 'technical', 'nice'],
+    ['Docker', 'technical', 'nice']
+  ]);
 });
 
 test("keeps a two-line stub honest instead of inventing requirements", () => {

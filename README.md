@@ -33,6 +33,8 @@ Browser UI
 
 `src/pipeline.mjs` is the shared entry point used by both the browser API and `npm run evaluate`. That keeps the interactive path and batch path on the same generation, research, coverage, and validation rules.
 
+Generated kits conform to Appendix A: company and brief sources are URL arrays, every requirement uses a stable `rN` ID, every question names the IDs it covers, and every schedule duration is an integer number of minutes. Detailed source metadata stays in `research_audit`, which keeps the required kit structure compact while preserving an audit trail.
+
 ### Research safety
 
 `src/retrieval.mjs` accepts only public HTTP(S) targets. It rejects credentials, loopback/private addresses, unsafe DNS results, redirects, oversized payloads, and unsupported content types. It also respects `robots.txt`, uses bounded timeouts, rate limits page fetches, and retries transient failures with backoff. Failed pages are recorded in the audit rather than failing the whole kit.
@@ -106,7 +108,7 @@ npm run evaluate -- --input examples/cases.json --output kits.json
 Input is an array of `{ id, jd, company_url, days }` objects. Output follows the required wrapper shape:
 
 ```json
-{ "results": [{ "id": "case-id", "status": "ok", "kit": {} }] }
+{ "version": "1.0", "generated_at": "2026-09-01T09:12:44Z", "kits": [{ "id": "case-id", "status": "ok", "kit": {}, "error": null }] }
 ```
 
 The evaluator continues past bad cases and writes an error object for failures. It permits local test URLs only through its explicit evaluator option; the browser route stays protected from private-network targets.
@@ -119,11 +121,13 @@ npm test
 
 The test suite covers requirement extraction, must-have coverage, schedule allocation, malformed input, retrieval safety, research failure handling, local privacy boundaries, Gemini response validation/retry behavior, and the shared pipeline.
 
-## Current limitations and next deployment step
+## Persistence and deployment
 
 The local file store (`data/store.json`) is intentionally a development fallback. It stores password hashes and opaque session-token hashes, but it is not suitable for a serverless or multi-instance deployment because local disks are ephemeral. The Supabase adapter below is the production persistence path.
 
-Company-owned pages and public interview discussions are fetched through separate adapters and recorded independently in `research_audit`. Community posts can influence the emphasis of generated questions, but are not presented as verified company facts. No public deployment is included in this repository yet.
+Company-owned pages and public interview discussions are fetched through separate adapters and recorded independently in `research_audit`. Community posts can influence the emphasis of generated questions, but are not presented as verified company facts.
+
+The deployed application is available at [trao-interview-prep-kit-ip3e.vercel.app](https://trao-interview-prep-kit-ip3e.vercel.app/). Vercel supplies the HTTPS runtime for the Next.js UI and API routes; Supabase provides durable server-side storage when its two server-only environment variables are configured.
 
 ### Hosted persistence with Supabase
 

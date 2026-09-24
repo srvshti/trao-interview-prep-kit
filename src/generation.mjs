@@ -37,7 +37,7 @@ export function generateQuestions(requirements, companyBrief, { variation = 0 } 
       ? 'Situation, task, actions you personally took, result, and what you learned.'
       : 'Clarify assumptions, describe the approach, call out the trade-off, then explain validation and monitoring.',
     difficulty: requirement.priority === 'must' ? 2 : 1,
-    evidence: companyBrief?.sources?.map((source) => source.url) || []
+    evidence: companyBrief?.sources?.map((source) => typeof source === 'string' ? source : source?.url).filter(Boolean) || []
   }));
 }
 
