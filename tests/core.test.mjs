@@ -19,6 +19,20 @@ test("schedule uses exactly the requested number of days", () => {
   assert.ok(schedule.days.every((day) => Number.isInteger(day.minutes)));
 });
 
+test("schedules must-have and harder questions before nice-to-have questions", () => {
+  const schedule = allocateSchedule([
+    { id: "q1", requirement_ids: ["r1"], difficulty: 1 },
+    { id: "q2", requirement_ids: ["r2"], difficulty: 3 },
+    { id: "q3", requirement_ids: ["r3"], difficulty: 3 },
+    { id: "q4", requirement_ids: ["r4"], difficulty: 1 }
+  ], [
+    { id: "r1", priority: "must" }, { id: "r2", priority: "nice" },
+    { id: "r3", priority: "must" }, { id: "r4", priority: "nice" }
+  ], 2);
+  assert.deepEqual(schedule.days[0].question_ids, ["q3", "q1"]);
+  assert.deepEqual(schedule.days[1].question_ids, ["q2", "q4"]);
+});
+
 test("coverage identifies an uncovered must-have requirement", () => {
   const gaps = findCoverageGaps([{ id: "r1", priority: "must" }, { id: "r2", priority: "nice" }], []);
   assert.deepEqual(gaps, ["r1"]);

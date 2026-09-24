@@ -6,28 +6,32 @@ function argument(name) {
   return index === -1 ? null : process.argv[index + 1];
 }
 
-const inputPath = argument("--input");
-const outputPath = argument("--output");
-if (!inputPath || !outputPath) {
-  console.error("Usage: npm run evaluate -- --input <cases.json> --output <kits.json>");
-  process.exit(1);
-}
-
-const cases = JSON.parse(await readFile(inputPath, "utf8"));
-if (!Array.isArray(cases)) throw new Error("input must be a JSON array");
-
-const kits = [];
-for (const entry of cases) {
-  try {
-    kits.push({ id: entry.id, status: "ok", kit: await buildKit(entry, { allowPrivateNetwork: true }), error: null });
-  } catch (error) {
-    kits.push({
+export async function evaluateCases(cases, { builder = buildKit } = {}) {
+  if (!Array.isArray(cases)) throw new Error("input must be a JSON array");
+  const results = [];
+  for (const entry of cases) {
+    try {
+      results.push({ id: entry.id, status: "ok", kit: await builder(entry, { allowPrivateNetwork: true }), error: null });
+    } catch (error) {
+      results.push({
       id: entry.id,
       status: "failed",
       kit: null,
       error: { code: "KIT_GENERATION_FAILED", message: error instanceof Error ? error.message : "Unknown error" }
-    });
+      });
+    }
   }
+  return { version: "1.0", generated_at: new Date().toISOString(), results };
 }
 
-await writeFile(outputPath, JSON.stringify({ version: "1.0", generated_at: new Date().toISOString(), kits }, null, 2));
+if (import.meta.url === new URL(process.argv[1], 'file:').href) {
+  const inputPath = argument("--input");
+  const outputPath = argument("--output");
+  if (!inputPath || !outputPath) {
+    console.error("Usage: npm run evaluate -- --input <cases.json> --output <kits.json>");
+    process.exit(1);
+  }
+
+  const cases = JSON.parse(await readFile(inputPath, "utf8"));
+  await writeFile(outputPath, JSON.stringify(await evaluateCases(cases), null, 2));
+}

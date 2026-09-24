@@ -69,8 +69,16 @@ export function allocateSchedule(questions, requirements, daysAvailable) {
     const bPriority = Math.min(...b.requirement_ids.map((id) => priority.get(id) ?? 1));
     return aPriority - bPriority || b.difficulty - a.difficulty;
   });
-  const buckets = Array.from({ length: daysAvailable }, () => []);
-  ordered.forEach((question, index) => buckets[index % daysAvailable].push(question.id));
+  // Keep the sorted, high-priority work contiguous so it is scheduled earlier.
+  const baseSize = Math.floor(ordered.length / daysAvailable);
+  const remainder = ordered.length % daysAvailable;
+  let offset = 0;
+  const buckets = Array.from({ length: daysAvailable }, (_, index) => {
+    const size = baseSize + (index < remainder ? 1 : 0);
+    const questionIds = ordered.slice(offset, offset + size).map((question) => question.id);
+    offset += size;
+    return questionIds;
+  });
   return {
     days_available: daysAvailable,
     days: buckets.map((questionIds, index) => ({
@@ -87,7 +95,15 @@ export function validateKit(kit) {
   const requirementIds = new Set(kit.role.requirements.map((requirement) => requirement.id));
   const questionIds = new Set(kit.questions.map((question) => question.id));
   const uncovered = findCoverageGaps(kit.role.requirements, kit.questions);
+  const scheduledQuestionIds = new Set(kit.schedule.days.flatMap((day) => day.question_ids));
+  const scheduledRequirementIds = new Set(kit.questions
+    .filter((question) => scheduledQuestionIds.has(question.id))
+    .flatMap((question) => question.requirement_ids));
+  const unscheduledMust = kit.role.requirements
+    .filter((requirement) => requirement.priority === 'must' && !scheduledRequirementIds.has(requirement.id))
+    .map((requirement) => requirement.id);
   if (uncovered.length) errors.push(`uncovered must-have requirements: ${uncovered.join(', ')}`);
+  if (unscheduledMust.length) errors.push(`must-have requirements missing from schedule: ${unscheduledMust.join(', ')}`);
   if (kit.schedule.days.length !== kit.schedule.days_available) errors.push("schedule day count does not match days_available");
   for (const question of kit.questions) {
     if (!question.requirement_ids.every((id) => requirementIds.has(id))) errors.push(`question ${question.id} references an unknown requirement`);

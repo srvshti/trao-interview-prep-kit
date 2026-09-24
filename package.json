@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
-    "evaluate": "node scripts/evaluate.mjs",
+    "evaluate": "node --env-file-if-exists=.env.local scripts/evaluate.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
