@@ -44,10 +44,17 @@ export function createFileStore(filePath) {
   }
 
   async function writeState(state) {
-    await mkdir(path.dirname(filePath), { recursive: true });
-    const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
-    await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-    await rename(temporaryPath, filePath);
+    try {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+      await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+      await rename(temporaryPath, filePath);
+    } catch (error) {
+      if (error?.code === 'ENOENT' || error?.code === 'EROFS') {
+        throw new Error('Persistent storage is not configured for this deployment. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel before creating an account.');
+      }
+      throw error;
+    }
   }
 
   async function read(reader) {
