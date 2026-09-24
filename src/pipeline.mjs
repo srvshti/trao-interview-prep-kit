@@ -16,6 +16,15 @@ function sourceUrl(source) {
   return typeof source === 'string' ? source : source?.url;
 }
 
+function normalizeCompanyBrief(brief) {
+  return {
+    ...brief,
+    summary: brief?.summary?.trim() || 'No company summary was found on the supplied pages.',
+    what_they_do: brief?.what_they_do?.trim() || 'No verified company context was retrieved.',
+    sources: Array.isArray(brief?.sources) ? brief.sources : []
+  };
+}
+
 export async function buildKit(input, { researcher = researchCompany, allowPrivateNetwork = false } = {}) {
   const draft = createKit(input);
   let companyBrief;
@@ -23,10 +32,10 @@ export async function buildKit(input, { researcher = researchCompany, allowPriva
 
   try {
     const research = await researcher(input.company_url, { allowPrivateNetwork });
-    companyBrief = research.companyBrief;
+    companyBrief = normalizeCompanyBrief(research.companyBrief);
     audit = research.audit;
   } catch (error) {
-    companyBrief = partialResearchBrief(error);
+    companyBrief = normalizeCompanyBrief(partialResearchBrief(error));
     audit = { pages_requested: 0, pages_retrieved: 0, fetch_errors: [{ url: input.company_url, error: companyBrief.retrieval_error }], provider: 'public-web-retrieval' };
   }
 

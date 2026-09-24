@@ -87,7 +87,9 @@ export async function researchCompany(companyUrl, { interviewSearcher = searchIn
   return {
     companyBrief: {
       summary: summaries[0] || 'No company summary was found on the supplied pages.',
-      what_they_do: summaries.slice(0, 3).join(' '),
+      // A blocked or script-rendered site can yield a page shell without usable prose.
+      // Preserve that uncertainty in the kit instead of rendering an empty brief field.
+      what_they_do: summaries.slice(0, 3).join(' ') || 'No verified company context was retrieved from the supplied website.',
       interview_process: {
         summary: interviewSummary || 'No public interview discussion was retrieved.',
         sources: interviewResearch.sources

@@ -29,3 +29,17 @@ test('keeps a kit usable when company research fails', async () => {
   assert.equal(kit.research_audit.fetch_errors.length, 1);
   assert.deepEqual(kit.coverage.uncovered_requirement_ids, []);
 });
+
+test('keeps the company brief explicit when retrieval returns no usable prose', async () => {
+  const kit = await buildKit(input, {
+    researcher: async () => ({
+      companyBrief: {
+        summary: 'No company summary was found on the supplied pages.',
+        what_they_do: '',
+        sources: []
+      },
+      audit: { pages_requested: 1, pages_retrieved: 1, fetch_errors: [], provider: 'test' }
+    })
+  });
+  assert.equal(kit.company_brief.what_they_do, 'No verified company context was retrieved.');
+});
