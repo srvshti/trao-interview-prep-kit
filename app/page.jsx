@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { deriveWeakSpots } from '../src/practice.mjs';
 
 const SAMPLE_JD = `Backend Engineer\n\nRequired: TypeScript, Node.js, REST APIs, SQL, and strong communication.\nNice to have: AWS and Docker.\nYou will design reliable services, debug production issues, and collaborate with product teams.`;
 
@@ -147,6 +148,7 @@ export default function HomePage() {
     });
   }, [kit, scores, coveredCardIds]);
   const activePracticeCard = practiceQueue[practiceIndex % Math.max(practiceQueue.length, 1)] || null;
+  const weakSpots = useMemo(() => kit ? deriveWeakSpots(kit.flashcards, scores) : [], [kit, scores]);
 
   const regenerableCategories = useMemo(() => {
     if (!kit) return [];
@@ -404,7 +406,11 @@ export default function HomePage() {
       return;
     }
     setError('');
-    const kitToSave = { ...kit, editor_state: { ...kit.editor_state, pinned_question_ids: pinnedQuestionIds, edited_question_ids: editedQuestionIds } };
+    const kitToSave = {
+      ...kit,
+      editor_state: { ...kit.editor_state, pinned_question_ids: pinnedQuestionIds, edited_question_ids: editedQuestionIds },
+      practice_state: { confidence_by_flashcard_id: scores, covered_flashcard_ids: coveredCardIds }
+    };
     const response = await fetch(`/api/kits/${savedId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kit: kitToSave }) });
     const data = await response.json();
     if (!response.ok) { setError(data.error || 'Could not save kit changes'); return; }
@@ -487,7 +493,7 @@ export default function HomePage() {
           {status && <p className="status mb-0 mt-4 text-sm font-semibold text-mint" role="status">{status}</p>}
           {error && <p className="error mb-0 mt-4 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
           {batchResults.length > 0 && <ul className="mb-0 mt-3 grid list-none gap-2 p-0" aria-label="Batch generation results">{batchResults.map((result) => <li key={result.id} className={`border px-3 py-2 text-sm ${result.status === 'ready' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'}`}>{result.id}: {result.status === 'ready' ? 'ready' : result.error}</li>)}</ul>}
-          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds(saved.kit.editor_state?.pinned_question_ids || []); setEditedQuestionIds(saved.kit.editor_state?.edited_question_ids || []); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
+          {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds(saved.kit.editor_state?.pinned_question_ids || []); setEditedQuestionIds(saved.kit.editor_state?.edited_question_ids || []); setScores(saved.kit.practice_state?.confidence_by_flashcard_id || {}); setCoveredCardIds(saved.kit.practice_state?.covered_flashcard_ids || []); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
         </section>
 
         <section aria-live="polite">
@@ -550,6 +556,11 @@ export default function HomePage() {
                   <span className="text-sm font-semibold text-slate-500">{coveredCardIds.length}/{kit.flashcards.length} covered</span>
                 </div>
                 {activePracticeCard && <Flashcard card={activePracticeCard} score={scores[activePracticeCard.id]} revealed={revealedCardIds.includes(activePracticeCard.id)} onReveal={revealCard} onScore={scoreCard} onNext={advancePractice} />}
+              </section>
+
+              <section className="border-l-4 border-coral bg-orange-50 px-4 py-4" aria-label="Weak spots report">
+                <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="m-0 text-lg font-bold text-ink">Weak spots</h2><p className="mb-0 mt-1 text-sm text-slate-600">Your next practice session starts with cards you rated lowest.</p></div><span className="text-sm font-bold text-coral">{weakSpots.length} to revisit</span></div>
+                {Object.keys(scores).length === 0 ? <p className="mb-0 mt-3 text-sm leading-6 text-slate-600">Rate a few flashcards to build a focused review list.</p> : weakSpots.length === 0 ? <p className="mb-0 mt-3 text-sm leading-6 text-slate-600">No cards are rated low. Keep practising to maintain that confidence.</p> : <ul className="mb-0 mt-3 grid list-none gap-2 p-0">{weakSpots.map((spot) => <li key={spot.id} className="border border-orange-200 bg-white px-3 py-2 text-sm text-slate-700">Confidence {spot.confidence}/3: {spot.front}</li>)}</ul>}
               </section>
 
               <section>

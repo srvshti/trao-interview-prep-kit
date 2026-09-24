@@ -58,6 +58,10 @@ Only public HTTP(S) URLs without embedded credentials are accepted in production
 
 The browser keeps edits locally for immediate keyboard-friendly changes. Build, research, schedule refresh, and category refresh show pending or failure feedback, while the build action is disabled during an active request to prevent accidental double submits.
 
+### Optional feature: Weak Spots report
+
+Interview preparation often becomes a long list of topics without a useful answer to “what should I practise next?” The Weak Spots report turns confidence ratings of 1/3 into a short, persisted review queue. It is intentionally simple and explainable: cards rated lowest appear first in the next practice session, and the report survives when a signed-in user saves and reopens their kit.
+
 ### Coverage and editor state
 
 Generation uses two deliberate passes. Pass one drafts requirement-linked questions. The deterministic coverage check then identifies every uncovered `must` requirement; pass two adds a bounded deterministic repair question for each gap and runs the same check again. Two passes are sufficient because the repair does not ask the model to interpret a gap: it creates one question directly from each missing requirement. `validateKit` rejects a kit that still has any uncovered must-have requirement, so an incomplete kit cannot be returned.
