@@ -2,6 +2,10 @@
 
 An interview-preparation workspace that turns a job description and company URL into an editable, requirement-linked practice kit. It keeps the critical planning rules deterministic while allowing Gemini generation when a key is configured.
 
+## Technology choices
+
+The preferred stack is Next.js/Tailwind, Node/Express, and MongoDB. This implementation uses the preferred Next.js and Tailwind frontend, while Next.js route handlers provide the Node backend within the same deployment rather than a separate Express service. Supabase Postgres replaces MongoDB because the application needs relational ownership boundaries between users, sessions, and kits, and it remains available on a free tier. Both substitutions are equivalent technologies permitted by the brief.
+
 ## What it does
 
 - Extracts stable requirement IDs from a job description and classifies them as `must` or `nice`.
@@ -12,6 +16,8 @@ An interview-preparation workspace that turns a job description and company URL 
 - Supports single-category question regeneration while preserving pinned, edited, and custom prompts.
 - Runs a one-card practice loop: reveal an answer, rate confidence, and revisit weak or uncovered cards first.
 - Provides the required batch evaluator, returning one result per case even when retrieval for a case fails.
+- Accepts a JSON or CSV file of role cases in the browser and builds each role independently, reporting per-case success or failure.
+- Shows visible input, research, and generation states, plus clear recoverable error messages.
 
 ## Architecture
 

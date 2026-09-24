@@ -4,6 +4,52 @@ import { useEffect, useMemo, useState } from 'react';
 
 const SAMPLE_JD = `Backend Engineer\n\nRequired: TypeScript, Node.js, REST APIs, SQL, and strong communication.\nNice to have: AWS and Docker.\nYou will design reliable services, debug production issues, and collaborate with product teams.`;
 
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"' && text[index + 1] === '"' && quoted) { field += '"'; index += 1; }
+    else if (character === '"') quoted = !quoted;
+    else if (character === ',' && !quoted) { row.push(field); field = ''; }
+    else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && text[index + 1] === '\n') index += 1;
+      row.push(field);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      field = '';
+    } else field += character;
+  }
+  row.push(field);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  return rows;
+}
+
+function parseBatchCases(text, fileName) {
+  let cases;
+  if (fileName.toLowerCase().endsWith('.json')) {
+    cases = JSON.parse(text);
+    if (!Array.isArray(cases)) throw new Error('The JSON file must contain an array of role cases.');
+  } else {
+    const [headers, ...rows] = parseCsv(text);
+    if (!headers) throw new Error('The CSV file is empty.');
+    const keys = headers.map((header) => header.trim().toLowerCase());
+    cases = rows.map((row) => Object.fromEntries(keys.map((key, index) => [key, row[index]?.trim() || ''])));
+  }
+  const normalized = cases.map((item, index) => ({
+    id: item.id || `batch-${index + 1}`,
+    jd: item.jd || item.job_description || item.jobdescription,
+    companyUrl: item.companyUrl || item.company_url || item.companywebsite || item.company_website,
+    days: item.days || item.days_available || 3
+  }));
+  if (!normalized.length) throw new Error('Add at least one role case to the file.');
+  const invalid = normalized.find((item) => !item.jd || !item.companyUrl);
+  if (invalid) throw new Error('Every row needs a job description (jd or job_description) and company URL (company_url).');
+  return normalized;
+}
+
 function Requirement({ requirement }) {
   return (
     <li className="border-b border-slate-100 py-3 last:border-0">
@@ -86,6 +132,9 @@ export default function HomePage() {
   const [regeneratingQuestions, setRegeneratingQuestions] = useState(false);
   const [questionRevision, setQuestionRevision] = useState(0);
   const [selectedQuestionCategory, setSelectedQuestionCategory] = useState('technical');
+  const [generationProgress, setGenerationProgress] = useState([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchResults, setBatchResults] = useState([]);
 
   const practiceQueue = useMemo(() => {
     if (!kit) return [];
@@ -153,6 +202,11 @@ export default function HomePage() {
   async function createPrepKit(event) {
     event.preventDefault();
     setStatus('Building your kit...');
+    setGenerationProgress([
+      { label: 'Validating role details', state: 'done' },
+      { label: 'Researching company context', state: 'active' },
+      { label: 'Generating questions, flashcards, and schedule', state: 'pending' }
+    ]);
     setError('');
     try {
       const response = await fetch('/api/kits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) });
@@ -166,11 +220,52 @@ export default function HomePage() {
       setRevealedCardIds([]);
       setCoveredCardIds([]);
       setPracticeIndex(0);
+      setGenerationProgress([
+        { label: 'Validating role details', state: 'done' },
+        { label: 'Researching company context', state: 'done' },
+        { label: 'Generating questions, flashcards, and schedule', state: 'done' }
+      ]);
       setStatus(data.saved ? 'Kit ready and saved privately. Start with the must-have requirements.' : 'Kit ready. Sign in to save it privately.');
       if (data.saved) await refreshAccount();
     } catch (requestError) {
       setStatus('');
+      setGenerationProgress((current) => current.map((step) => step.state === 'active' ? { ...step, state: 'failed' } : step));
       setError(requestError.message);
+    }
+  }
+
+  async function importBatch(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setBatchLoading(true);
+    setError('');
+    setBatchResults([]);
+    try {
+      const cases = parseBatchCases(await file.text(), file.name);
+      const results = [];
+      for (const [index, item] of cases.entries()) {
+        setStatus(`Building kit ${index + 1} of ${cases.length}: ${item.id}`);
+        const response = await fetch('/api/kits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item) });
+        const data = await response.json();
+        results.push(response.ok
+          ? { id: item.id, status: 'ready', kit: { ...data.kit, editor_state: { pinned_question_ids: [], edited_question_ids: [] } }, savedId: data.savedId }
+          : { id: item.id, status: 'failed', error: data.error || 'Could not build this kit' });
+        setBatchResults([...results]);
+      }
+      const completed = results.filter((result) => result.status === 'ready');
+      if (completed[0]) {
+        setKit(completed[0].kit);
+        setSavedId(completed[0].savedId || null);
+        setPinnedQuestionIds([]);
+        setEditedQuestionIds([]);
+      }
+      setStatus(`${completed.length} of ${cases.length} batch kit${cases.length === 1 ? '' : 's'} ready.${account ? ' Saved kits are available in your private workspace.' : ' Sign in to save future kits privately.'}`);
+      if (account) await refreshAccount();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBatchLoading(false);
     }
   }
 
@@ -356,8 +451,15 @@ export default function HomePage() {
             </label>
             <button type="submit" className="primary-button h-11 bg-mint px-4 text-sm font-bold text-white hover:bg-emerald-800">Create prep kit</button>
           </form>
+          <div className="mt-5 border-t border-slate-200 pt-4">
+            <label className="block text-sm font-semibold text-slate-700">Build several roles from a file
+              <input type="file" accept=".json,.csv,application/json,text/csv" onChange={importBatch} disabled={batchLoading} className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-mint disabled:opacity-50" />
+            </label>
+            <p className="mb-0 mt-2 text-xs leading-5 text-slate-500">Upload JSON or CSV. Use <code>jd</code>, <code>company_url</code>, and optional <code>days</code> and <code>id</code> columns.</p>
+          </div>
           {status && <p className="status mb-0 mt-4 text-sm font-semibold text-mint" role="status">{status}</p>}
           {error && <p className="error mb-0 mt-4 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
+          {batchResults.length > 0 && <ul className="mb-0 mt-3 grid list-none gap-2 p-0" aria-label="Batch generation results">{batchResults.map((result) => <li key={result.id} className={`border px-3 py-2 text-sm ${result.status === 'ready' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'}`}>{result.id}: {result.status === 'ready' ? 'ready' : result.error}</li>)}</ul>}
           {account && savedKits.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><p className="m-0 text-xs font-bold uppercase text-slate-500">Saved kits</p><ul className="mb-0 mt-2 grid list-none gap-2 p-0">{savedKits.slice(0, 4).map((saved) => <li key={saved.id}><button type="button" onClick={() => { setKit(saved.kit); setSavedId(saved.id); setPinnedQuestionIds(saved.kit.editor_state?.pinned_question_ids || []); setEditedQuestionIds(saved.kit.editor_state?.edited_question_ids || []); setStatus('Saved kit loaded.'); }} className="w-full border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-ink hover:border-mint">{saved.kit.role.title}</button></li>)}</ul></div>}
         </section>
 
@@ -369,6 +471,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="output-stack grid gap-6">
+              {generationProgress.length > 0 && <section className="panel border border-slate-200 bg-white p-5 shadow-sm" aria-label="Generation progress"><h2 className="m-0 text-lg font-bold text-ink">Generation progress</h2><ol className="mb-0 mt-3 grid list-none gap-2 p-0">{generationProgress.map((step) => <li key={step.label} className={`border-l-4 px-3 py-2 text-sm font-semibold ${step.state === 'done' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : step.state === 'failed' ? 'border-rose-500 bg-rose-50 text-rose-900' : step.state === 'active' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-slate-300 bg-slate-50 text-slate-600'}`}>{step.state === 'done' ? 'Done: ' : step.state === 'active' ? 'Working: ' : step.state === 'failed' ? 'Failed: ' : 'Waiting: '}{step.label}</li>)}</ol></section>}
               <div className="panel border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="summary-header flex flex-wrap items-start justify-between gap-3">
                   <div>
